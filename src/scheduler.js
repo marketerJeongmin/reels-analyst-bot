@@ -1,6 +1,13 @@
 import { buildMonthlyReport, buildWeeklyReport, shouldSendMonthlyReport, shouldSendWeeklyReport } from "./reports.js";
 
-export function startReportScheduler({ client, getRows, hasSent, markSent, outputChannelId }) {
+export function startReportScheduler({
+  client,
+  getRows,
+  hasSent,
+  markSent,
+  outputChannelId,
+  mentionId
+}) {
   let isRunning = false;
 
   const run = async () => {
@@ -24,7 +31,7 @@ export function startReportScheduler({ client, getRows, hasSent, markSent, outpu
         const alreadySent = await hasSent("weekly", weekly.reportKey);
 
         if (!alreadySent) {
-          await outputChannel.send(weekly.content);
+          await outputChannel.send(prefixMention(mentionId, weekly.content));
           await markSent("weekly", weekly.reportKey, now.toISOString());
         }
       }
@@ -34,7 +41,7 @@ export function startReportScheduler({ client, getRows, hasSent, markSent, outpu
         const alreadySent = await hasSent("monthly", monthly.reportKey);
 
         if (!alreadySent) {
-          await outputChannel.send(monthly.content);
+          await outputChannel.send(prefixMention(mentionId, monthly.content));
           await markSent("monthly", monthly.reportKey, now.toISOString());
         }
       }
@@ -47,4 +54,12 @@ export function startReportScheduler({ client, getRows, hasSent, markSent, outpu
 
   run();
   return setInterval(run, 60 * 1000);
+}
+
+function prefixMention(mentionId, content) {
+  if (!mentionId) {
+    return content;
+  }
+
+  return `<@${mentionId}>\n${content}`;
 }

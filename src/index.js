@@ -58,7 +58,8 @@ client.once(Events.ClientReady, async (readyClient) => {
     getRows: getSubmissionRows,
     hasSent: hasReportBeenSent,
     markSent: markReportSent,
-    outputChannelId: process.env.DISCORD_REPORT_CHANNEL_ID
+    outputChannelId: process.env.DISCORD_REPORT_CHANNEL_ID,
+    mentionId: process.env.DISCORD_REPORT_MENTION_ID
   });
   console.log(`Logged in as ${readyClient.user.tag}`);
 });
