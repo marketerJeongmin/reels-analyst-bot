@@ -13,7 +13,7 @@ export async function analyzeSubmission(submission) {
 
 답변 원칙:
 - 짧고 실무적으로 쓴다.
-- 후킹, 초반 이탈, 저장/공유 가치를 중심으로 본다.
+- 후킹, 저장, 댓글, 도달 계정 수, 건너뛰기 비율, 평균 시청 시간을 중심으로 본다.
 - 무의미한 위로보다 바로 다음 액션을 준다.
 - 출력은 한국어로 한다.
 
@@ -25,15 +25,18 @@ export async function analyzeSubmission(submission) {
 5. 다음 주제 3개
 
 데이터:
+- 업로드 날짜: ${submission.uploadDate ?? ""}
 - 주제: ${submission.topic ?? ""}
 - 후킹: ${submission.hook ?? ""}
-- 조회수: ${submission.views ?? ""}
-- 유지율/평균시청: ${submission.retention ?? ""}
-- 저장: ${submission.saves ?? ""}
-- 공유: ${submission.shares ?? ""}
+- 분류: ${submission.category ?? ""}
 - 댓글: ${submission.comments ?? ""}
-- 초반이탈: ${submission.earlyDropoff ?? ""}
-- 내느낌: ${submission.note ?? ""}
+- 저장: ${submission.saves ?? ""}
+- 조회수: ${submission.views ?? ""}
+- 도달 계정 수: ${submission.reach ?? ""}
+- 건너뛰기 비율: ${submission.skipRate ?? ""}
+- 평균시청시간: ${submission.averageWatchTime ?? ""}
+- 팔로우 증가 수: ${submission.follows ?? ""}
+- 내 코멘트: ${submission.commentary ?? ""}
 `.trim();
 
   const response = await client.responses.create({

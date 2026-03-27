@@ -4,16 +4,19 @@ const SHEET_NAME = "ReelsData";
 const HEADER_ROW = [
   "submitted_at",
   "discord_user",
-  "discord_message_id",
+  "discord_interaction_id",
+  "upload_date",
   "topic",
   "hook",
-  "views",
-  "retention",
-  "saves",
-  "shares",
+  "category",
   "comments",
-  "early_dropoff",
-  "note"
+  "saves",
+  "views",
+  "reach",
+  "skip_rate",
+  "average_watch_time",
+  "follows",
+  "commentary"
 ];
 
 function getSheetsClient() {
@@ -38,7 +41,7 @@ export async function ensureSheetHeader() {
     (
       await sheets.spreadsheets.values.get({
         spreadsheetId,
-        range: `${SHEET_NAME}!A1:L1`
+        range: `${SHEET_NAME}!A1:N1`
       })
     ).data.values ?? [];
 
@@ -48,7 +51,7 @@ export async function ensureSheetHeader() {
 
   await sheets.spreadsheets.values.update({
     spreadsheetId,
-    range: `${SHEET_NAME}!A1:L1`,
+    range: `${SHEET_NAME}!A1:N1`,
     valueInputOption: "RAW",
     requestBody: {
       values: [HEADER_ROW]
@@ -56,13 +59,13 @@ export async function ensureSheetHeader() {
   });
 }
 
-export async function appendSubmissionRow({ submission, discordUser, messageId, submittedAt }) {
+export async function appendSubmissionRow({ submission, discordUser, interactionId, submittedAt }) {
   const sheets = getSheetsClient();
   const spreadsheetId = process.env.GOOGLE_SHEET_ID;
 
   await sheets.spreadsheets.values.append({
     spreadsheetId,
-    range: `${SHEET_NAME}!A:L`,
+    range: `${SHEET_NAME}!A:N`,
     valueInputOption: "USER_ENTERED",
     insertDataOption: "INSERT_ROWS",
     requestBody: {
@@ -70,16 +73,19 @@ export async function appendSubmissionRow({ submission, discordUser, messageId, 
         [
           submittedAt,
           discordUser,
-          messageId,
+          interactionId,
+          submission.uploadDate ?? "",
           submission.topic ?? "",
           submission.hook ?? "",
-          submission.views ?? "",
-          submission.retention ?? "",
-          submission.saves ?? "",
-          submission.shares ?? "",
+          submission.category ?? "",
           submission.comments ?? "",
-          submission.earlyDropoff ?? "",
-          submission.note ?? ""
+          submission.saves ?? "",
+          submission.views ?? "",
+          submission.reach ?? "",
+          submission.skipRate ?? "",
+          submission.averageWatchTime ?? "",
+          submission.follows ?? "",
+          submission.commentary ?? ""
         ]
       ]
     }
