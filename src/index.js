@@ -45,6 +45,7 @@ const CATEGORY_CHOICES = [
   { name: "정보성", value: "정보성" },
   { name: "임장", value: "임장" }
 ];
+const DEFAULT_MENTION_ID = process.env.DISCORD_MENTION_ID || process.env.DISCORD_REPORT_MENTION_ID || "";
 
 const client = new Client({
   intents: [GatewayIntentBits.Guilds]
@@ -213,7 +214,7 @@ async function handleModalSubmit(interaction) {
       analysis
     ].join("\n");
 
-    await outputChannel.send(summary);
+    await outputChannel.send(prefixMention(DEFAULT_MENTION_ID, summary));
   } catch (error) {
     console.error(error);
 
@@ -230,6 +231,14 @@ async function handleModalSubmit(interaction) {
       ephemeral: true
     });
   }
+}
+
+function prefixMention(mentionId, content) {
+  if (!mentionId) {
+    return content;
+  }
+
+  return `<@${mentionId}>\n${content}`;
 }
 
 function parseMetricGroupA(rawValue) {
