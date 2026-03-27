@@ -123,14 +123,14 @@ async function handleSlashCommand(interaction) {
       .setRequired(true),
     new TextInputBuilder()
       .setCustomId("metricsA")
-      .setLabel("댓글 / 저장 / 조회수")
-      .setPlaceholder("예: 댓글 18 / 저장 217 / 조회수 12432")
+      .setLabel("좋아요 / 댓글 / 저장 / 공유")
+      .setPlaceholder("예: 좋아요 145 / 댓글 18 / 저장 217 / 공유 41")
       .setStyle(TextInputStyle.Short)
       .setRequired(true),
     new TextInputBuilder()
       .setCustomId("metricsB")
-      .setLabel("도달 / 건너뛰기 / 평균시청 / 팔로우")
-      .setPlaceholder("예: 도달 9510 / 건너뛰기 32% / 평균시청 7.8초 / 팔로우 12")
+      .setLabel("조회수 / 도달 / 건너뛰기 / 평균시청 / 팔로우")
+      .setPlaceholder("예: 조회수 12432 / 도달 9510 / 건너뛰기 32% / 평균시청 7.8초 / 팔로우 12")
       .setStyle(TextInputStyle.Short)
       .setRequired(true),
     new TextInputBuilder()
@@ -219,29 +219,31 @@ async function handleModalSubmit(interaction) {
 function parseMetricGroupA(rawValue) {
   const parts = rawValue.split("/").map((part) => part.trim());
 
-  if (parts.length !== 3) {
-    throw new Error("metricsA must include comments, saves, and views.");
+  if (parts.length !== 4) {
+    throw new Error("metricsA must include likes, comments, saves, and shares.");
   }
 
   return {
-    comments: stripMetricLabel(parts[0]),
-    saves: stripMetricLabel(parts[1]),
-    views: stripMetricLabel(parts[2])
+    likes: stripMetricLabel(parts[0]),
+    comments: stripMetricLabel(parts[1]),
+    saves: stripMetricLabel(parts[2]),
+    shares: stripMetricLabel(parts[3])
   };
 }
 
 function parseMetricGroupB(rawValue) {
   const parts = rawValue.split("/").map((part) => part.trim());
 
-  if (parts.length !== 4) {
-    throw new Error("metricsB must include reach, skip rate, average watch time, and follows.");
+  if (parts.length !== 5) {
+    throw new Error("metricsB must include views, reach, skip rate, average watch time, and follows.");
   }
 
   return {
-    reach: stripMetricLabel(parts[0]),
-    skipRate: stripMetricLabel(parts[1]),
-    averageWatchTime: stripMetricLabel(parts[2]),
-    follows: stripMetricLabel(parts[3])
+    views: stripMetricLabel(parts[0]),
+    reach: stripMetricLabel(parts[1]),
+    skipRate: stripMetricLabel(parts[2]),
+    averageWatchTime: stripMetricLabel(parts[3]),
+    follows: stripMetricLabel(parts[4])
   };
 }
 

@@ -9,8 +9,10 @@ const HEADER_ROW = [
   "topic",
   "hook",
   "category",
+  "likes",
   "comments",
   "saves",
+  "shares",
   "views",
   "reach",
   "skip_rate",
@@ -41,7 +43,7 @@ export async function ensureSheetHeader() {
     (
       await sheets.spreadsheets.values.get({
         spreadsheetId,
-        range: `${SHEET_NAME}!A1:O1`
+        range: `${SHEET_NAME}!A1:Q1`
       })
     ).data.values ?? [];
 
@@ -51,7 +53,7 @@ export async function ensureSheetHeader() {
 
   await sheets.spreadsheets.values.update({
     spreadsheetId,
-    range: `${SHEET_NAME}!A1:O1`,
+    range: `${SHEET_NAME}!A1:Q1`,
     valueInputOption: "RAW",
     requestBody: {
       values: [HEADER_ROW]
@@ -65,7 +67,7 @@ export async function appendSubmissionRow({ submission, discordUser, interaction
 
   await sheets.spreadsheets.values.append({
     spreadsheetId,
-    range: `${SHEET_NAME}!A:O`,
+    range: `${SHEET_NAME}!A:Q`,
     valueInputOption: "USER_ENTERED",
     insertDataOption: "INSERT_ROWS",
     requestBody: {
@@ -78,8 +80,10 @@ export async function appendSubmissionRow({ submission, discordUser, interaction
           submission.topic ?? "",
           submission.hook ?? "",
           submission.category ?? "",
+          submission.likes ?? "",
           submission.comments ?? "",
           submission.saves ?? "",
+          submission.shares ?? "",
           submission.views ?? "",
           submission.reach ?? "",
           submission.skipRate ?? "",
