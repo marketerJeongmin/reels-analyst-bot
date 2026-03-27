@@ -13,12 +13,20 @@ import {
   TextInputStyle
 } from "discord.js";
 import { analyzeSubmission } from "./openai-client.js";
-import { appendSubmissionRow, ensureSheetHeader } from "./sheets.js";
+import { startReportScheduler } from "./scheduler.js";
+import {
+  appendSubmissionRow,
+  ensureSheetHeader,
+  getSubmissionRows,
+  hasReportBeenSent,
+  markReportSent
+} from "./sheets.js";
 
 const requiredEnvVars = [
   "DISCORD_TOKEN",
   "DISCORD_INPUT_CHANNEL_ID",
   "DISCORD_OUTPUT_CHANNEL_ID",
+  "DISCORD_REPORT_CHANNEL_ID",
   "OPENAI_API_KEY",
   "GOOGLE_SHEET_ID",
   "GOOGLE_SERVICE_ACCOUNT_EMAIL",
@@ -45,6 +53,13 @@ const client = new Client({
 client.once(Events.ClientReady, async (readyClient) => {
   await ensureSheetHeader();
   await registerSlashCommand(readyClient);
+  startReportScheduler({
+    client: readyClient,
+    getRows: getSubmissionRows,
+    hasSent: hasReportBeenSent,
+    markSent: markReportSent,
+    outputChannelId: process.env.DISCORD_REPORT_CHANNEL_ID
+  });
   console.log(`Logged in as ${readyClient.user.tag}`);
 });
 
