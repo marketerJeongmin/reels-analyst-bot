@@ -123,8 +123,8 @@ async function handleSlashCommand(interaction) {
       .setRequired(true),
     new TextInputBuilder()
       .setCustomId("metricsA")
-      .setLabel("좋아요 / 댓글 / 저장 / 공유")
-      .setPlaceholder("예: 좋아요 145 / 댓글 18 / 저장 217 / 공유 41")
+      .setLabel("좋아요 / 댓글 / 공유 / 저장")
+      .setPlaceholder("예: 좋아요 145 / 댓글 18 / 공유 41 / 저장 217")
       .setStyle(TextInputStyle.Short)
       .setRequired(true),
     new TextInputBuilder()
@@ -159,7 +159,7 @@ async function handleModalSubmit(interaction) {
 
   try {
     const submission = {
-      uploadDate,
+      uploadDate: normalizeUploadDate(uploadDate),
       topic: interaction.fields.getTextInputValue("topic").trim(),
       hook: interaction.fields.getTextInputValue("hook").trim(),
       category,
@@ -220,14 +220,14 @@ function parseMetricGroupA(rawValue) {
   const parts = rawValue.split("/").map((part) => part.trim());
 
   if (parts.length !== 4) {
-    throw new Error("metricsA must include likes, comments, saves, and shares.");
+    throw new Error("metricsA must include likes, comments, shares, and saves.");
   }
 
   return {
     likes: stripMetricLabel(parts[0]),
     comments: stripMetricLabel(parts[1]),
-    saves: stripMetricLabel(parts[2]),
-    shares: stripMetricLabel(parts[3])
+    shares: stripMetricLabel(parts[2]),
+    saves: stripMetricLabel(parts[3])
   };
 }
 
@@ -250,6 +250,22 @@ function parseMetricGroupB(rawValue) {
 function stripMetricLabel(value) {
   const match = value.match(/^[^0-9\-]*([0-9][^]*)$/);
   return match ? match[1].trim() : value.trim();
+}
+
+function normalizeUploadDate(value) {
+  const trimmed = value.trim();
+  const digits = trimmed.match(/\d+/g);
+
+  if (!digits || digits.length < 3) {
+    return trimmed;
+  }
+
+  const [yearRaw, monthRaw, dayRaw] = digits;
+  const year = yearRaw.padStart(4, "20").slice(-4);
+  const month = monthRaw.padStart(2, "0");
+  const day = dayRaw.padStart(2, "0");
+
+  return `${year}-${month}-${day}`;
 }
 
 client.login(process.env.DISCORD_TOKEN);
