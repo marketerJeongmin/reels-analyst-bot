@@ -71,6 +71,12 @@ async function registerSlashCommand(readyClient) {
     .setDescription("릴스 성과 입력 폼을 엽니다.")
     .addStringOption((option) =>
       option
+        .setName("업로드날짜")
+        .setDescription("예: 2026-03-27")
+        .setRequired(true)
+    )
+    .addStringOption((option) =>
+      option
         .setName("분류")
         .setDescription("콘텐츠 분류를 고르세요.")
         .setRequired(true)
@@ -97,17 +103,12 @@ async function handleSlashCommand(interaction) {
   }
 
   const category = interaction.options.getString("분류", true);
+  const uploadDate = interaction.options.getString("업로드날짜", true);
   const modal = new ModalBuilder()
-    .setCustomId(`${INPUT_MODAL_PREFIX}:${category}`)
+    .setCustomId(`${INPUT_MODAL_PREFIX}:${encodeURIComponent(category)}:${encodeURIComponent(uploadDate)}`)
     .setTitle(`릴스 입력 - ${category}`);
 
   const fields = [
-    new TextInputBuilder()
-      .setCustomId("uploadDate")
-      .setLabel("업로드 날짜")
-      .setPlaceholder("예: 2026-03-27")
-      .setStyle(TextInputStyle.Short)
-      .setRequired(true),
     new TextInputBuilder()
       .setCustomId("topic")
       .setLabel("주제")
@@ -152,11 +153,13 @@ async function handleModalSubmit(interaction) {
     return;
   }
 
-  const category = interaction.customId.slice(`${INPUT_MODAL_PREFIX}:`.length);
+  const [, encodedCategory, encodedUploadDate] = interaction.customId.split(":");
+  const category = decodeURIComponent(encodedCategory ?? "");
+  const uploadDate = decodeURIComponent(encodedUploadDate ?? "");
 
   try {
     const submission = {
-      uploadDate: interaction.fields.getTextInputValue("uploadDate").trim(),
+      uploadDate,
       topic: interaction.fields.getTextInputValue("topic").trim(),
       hook: interaction.fields.getTextInputValue("hook").trim(),
       category,
