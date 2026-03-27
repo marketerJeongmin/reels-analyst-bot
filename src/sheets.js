@@ -41,7 +41,7 @@ export async function ensureSheetHeader() {
     (
       await sheets.spreadsheets.values.get({
         spreadsheetId,
-        range: `${SHEET_NAME}!A1:N1`
+        range: `${SHEET_NAME}!A1:O1`
       })
     ).data.values ?? [];
 
@@ -51,7 +51,7 @@ export async function ensureSheetHeader() {
 
   await sheets.spreadsheets.values.update({
     spreadsheetId,
-    range: `${SHEET_NAME}!A1:N1`,
+    range: `${SHEET_NAME}!A1:O1`,
     valueInputOption: "RAW",
     requestBody: {
       values: [HEADER_ROW]
@@ -65,7 +65,7 @@ export async function appendSubmissionRow({ submission, discordUser, interaction
 
   await sheets.spreadsheets.values.append({
     spreadsheetId,
-    range: `${SHEET_NAME}!A:N`,
+    range: `${SHEET_NAME}!A:O`,
     valueInputOption: "USER_ENTERED",
     insertDataOption: "INSERT_ROWS",
     requestBody: {
