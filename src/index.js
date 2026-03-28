@@ -5,6 +5,7 @@ import {
   Client,
   Events,
   GatewayIntentBits,
+  MessageFlags,
   ModalBuilder,
   REST,
   Routes,
@@ -114,7 +115,7 @@ async function handleSlashCommand(interaction) {
   if (interaction.channelId !== process.env.DISCORD_INPUT_CHANNEL_ID) {
     await interaction.reply({
       content: "이 명령은 `릴스-입력` 채널에서만 써주세요.",
-      ephemeral: true
+      flags: MessageFlags.Ephemeral
     });
     return;
   }
@@ -187,7 +188,7 @@ async function handleModalSubmit(interaction) {
 
     await interaction.reply({
       content: "입력 저장 중이에요. 분석이 끝나면 `릴스-분석` 채널에 올릴게요.",
-      ephemeral: true
+      flags: MessageFlags.Ephemeral
     });
 
     await appendSubmissionRow({
@@ -221,14 +222,14 @@ async function handleModalSubmit(interaction) {
     if (interaction.replied || interaction.deferred) {
       await interaction.followUp({
         content: "저장 또는 분석 중에 오류가 났어요. 설정이나 입력 형식을 한 번 확인해 주세요.",
-        ephemeral: true
+        flags: MessageFlags.Ephemeral
       });
       return;
     }
 
     await interaction.reply({
       content: "저장 또는 분석 중에 오류가 났어요. 설정이나 입력 형식을 한 번 확인해 주세요.",
-      ephemeral: true
+      flags: MessageFlags.Ephemeral
     });
   }
 }
