@@ -14,6 +14,7 @@ import {
   TextInputStyle
 } from "discord.js";
 import { analyzeSubmission } from "./openai-client.js";
+import { buildRepurposedOutputs } from "./repurpose.js";
 import { startReportScheduler } from "./scheduler.js";
 import {
   appendSubmissionRow,
@@ -28,6 +29,10 @@ const requiredEnvVars = [
   "DISCORD_INPUT_CHANNEL_ID",
   "DISCORD_OUTPUT_CHANNEL_ID",
   "DISCORD_REPORT_CHANNEL_ID",
+  "DISCORD_SCRIPT_INPUT_CHANNEL_ID",
+  "DISCORD_CAPCUT_CHANNEL_ID",
+  "DISCORD_INSTAGRAM_CHANNEL_ID",
+  "DISCORD_YOUTUBE_CHANNEL_ID",
   "OPENAI_API_KEY",
   "GOOGLE_SHEET_ID",
   "GOOGLE_SERVICE_ACCOUNT_EMAIL",
@@ -49,7 +54,7 @@ const CATEGORY_CHOICES = [
 const DEFAULT_MENTION_ID = process.env.DISCORD_MENTION_ID || process.env.DISCORD_REPORT_MENTION_ID || "";
 
 const client = new Client({
-  intents: [GatewayIntentBits.Guilds]
+  intents: [GatewayIntentBits.Guilds, GatewayIntentBits.GuildMessages, GatewayIntentBits.MessageContent]
 });
 
 client.once(Events.ClientReady, async (readyClient) => {
@@ -74,6 +79,52 @@ client.on(Events.InteractionCreate, async (interaction) => {
 
   if (interaction.isModalSubmit()) {
     await handleModalSubmit(interaction);
+  }
+});
+
+client.on(Events.MessageCreate, async (message) => {
+  if (message.author.bot) {
+    return;
+  }
+
+  if (message.channelId !== process.env.DISCORD_SCRIPT_INPUT_CHANNEL_ID) {
+    return;
+  }
+
+  try {
+    const { capcutScript, instagramCaption, youtubeDescription } = await buildRepurposedOutputs(
+      message.content
+    );
+
+    const [capcutChannel, instagramChannel, youtubeChannel] = await Promise.all([
+      client.channels.fetch(process.env.DISCORD_CAPCUT_CHANNEL_ID),
+      client.channels.fetch(process.env.DISCORD_INSTAGRAM_CHANNEL_ID),
+      client.channels.fetch(process.env.DISCORD_YOUTUBE_CHANNEL_ID)
+    ]);
+
+    if (
+      !capcutChannel ||
+      capcutChannel.type !== ChannelType.GuildText ||
+      !instagramChannel ||
+      instagramChannel.type !== ChannelType.GuildText ||
+      !youtubeChannel ||
+      youtubeChannel.type !== ChannelType.GuildText
+    ) {
+      throw new Error("One or more repurpose output channels are missing or not text channels.");
+    }
+
+    await capcutChannel.send(prefixMention(DEFAULT_MENTION_ID, `### 캡컷-음성변환\n${capcutScript}`));
+    await instagramChannel.send(
+      prefixMention(DEFAULT_MENTION_ID, `### 인스타-캡션\n${instagramCaption}`)
+    );
+    await youtubeChannel.send(
+      prefixMention(DEFAULT_MENTION_ID, `### 유튜브-설명\n${youtubeDescription}`)
+    );
+
+    await message.react("✅");
+  } catch (error) {
+    console.error(error);
+    await message.reply("원소스 멀티유즈 변환 중 오류가 났어요. 채널 설정과 입력 대본을 확인해 주세요.");
   }
 });
 

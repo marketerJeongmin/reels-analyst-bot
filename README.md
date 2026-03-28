@@ -12,6 +12,10 @@
 
 - 입력 채널: `#릴스-입력`
 - 결과 채널: `#릴스-분석`
+- 대본 입력 채널: `#대본입력`
+- 캡컷 출력 채널: `#캡컷-음성변환`
+- 인스타 출력 채널: `#인스타-캡션`
+- 유튜브 출력 채널: `#유튜브-설명`
 
 입력 흐름:
 
@@ -50,6 +54,20 @@
 
 - 건너뛰기 비율
 - 평균 시청 시간
+
+## 원소스 멀티유즈
+
+대본 입력 채널에 원문 대본을 올리면 봇이 아래 세 가지를 자동으로 생성한다.
+
+- 캡컷용 TTS 대본
+- 인스타그램 캡션
+- 유튜브 설명란
+
+규칙 요약:
+
+- 캡컷: 숫자 한글 변환, `!!`/`??` 유지, 줄바꿈 최소화
+- 인스타: 대본을 그대로 복붙하지 않고 가독성 좋게 개조식 정리
+- 유튜브: 인스타와 비슷하게 정리하되 팔로우 문구는 제외
 
 ## 둥지 점수 체계
 
@@ -114,6 +132,7 @@
 4. 왼쪽 `Bot` 메뉴로 들어간다.
 5. `Reset Token` 또는 `Add Bot`을 눌러 봇 토큰을 만든다.
 6. 아래 설정을 켠다.
+   - `MESSAGE CONTENT INTENT`
    - `SERVER MEMBERS INTENT`는 필요 없다.
 7. 왼쪽 `OAuth2 > URL Generator`로 들어간다.
 8. 아래 권한을 선택한다.
@@ -164,6 +183,10 @@ cp .env.example .env
 - `DISCORD_INPUT_CHANNEL_ID`
 - `DISCORD_OUTPUT_CHANNEL_ID`
 - `DISCORD_REPORT_CHANNEL_ID`
+- `DISCORD_SCRIPT_INPUT_CHANNEL_ID`
+- `DISCORD_CAPCUT_CHANNEL_ID`
+- `DISCORD_INSTAGRAM_CHANNEL_ID`
+- `DISCORD_YOUTUBE_CHANNEL_ID`
 - `DISCORD_MENTION_ID` (선택, 모든 결과 멘션용)
 - `DISCORD_REPORT_MENTION_ID` (선택)
 - `OPENAI_API_KEY`
