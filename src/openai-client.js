@@ -1,6 +1,11 @@
 import OpenAI from "openai";
 
 const FAN_SCORE_BENCHMARK = 6.3;
+const LOW_VIEW_RATE_BENCHMARK = 1.0;
+const LOW_LIKE_RATE_BENCHMARK = 0.6;
+const LOW_COMMENT_RATE_BENCHMARK = 0.08;
+const LOW_SHARE_RATE_BENCHMARK = 0.25;
+const LOW_SAVE_RATE_BENCHMARK = 0.4;
 
 const client = new OpenAI({
   apiKey: process.env.OPENAI_API_KEY
@@ -14,12 +19,19 @@ export async function analyzeSubmission(submission) {
   const shares = toNumber(submission.shares);
   const reach = toNumber(submission.reach);
   const follows = toNumber(submission.follows);
+  const likes = toNumber(submission.likes);
+  const comments = toNumber(submission.comments);
 
   const hookScore = clampScore(100 - skipRate);
   const valueRaw = safeDivide(saves + shares, views) * 100;
   const fanRaw = safeDivide(follows, reach) * 1000;
   const valueScore = normalizeToHundred(valueRaw, 2);
   const fanScore = normalizeToHundred(fanRaw, FAN_SCORE_BENCHMARK);
+  const viewRate = safeDivide(views, reach) * 100;
+  const likeRate = safeDivide(likes, reach) * 100;
+  const commentRate = safeDivide(comments, reach) * 100;
+  const shareRate = safeDivide(shares, views) * 100;
+  const saveRate = safeDivide(saves, views) * 100;
 
   const prompt = `
 너는 인스타그램 정보형 숏폼 콘텐츠 분석가야.
@@ -35,6 +47,7 @@ export async function analyzeSubmission(submission) {
 - 개별 영상 리포트에서는 다음 후킹/다음 주제 목록을 길게 주지 않는다.
 - 지금 당장 바꿀 한 가지를 가장 중요하게 제안한다.
 - 세 점수는 모두 100점 만점 기준으로 비교 가능하게 해석한다.
+- 점수는 그대로 두고, 조회수/좋아요/댓글/공유/저장 지표가 낮을 때의 의미를 반영해 다음 액션을 제안한다.
 
 아래 형식으로만 답해줘.
 ### 🐣 [Dungji] 릴스 성과 리포트
@@ -65,6 +78,19 @@ export async function analyzeSubmission(submission) {
 - 평균 시청 시간이 아쉬운데 조회수가 낮다면, 편집 효율 관점에서 영상 길이를 몇 초 줄일지 구체적으로 제안한다.
 - 내 코멘트에서 핵심 키워드를 뽑아 다음 액션에 반영한다.
 - 후킹/주제 추천은 주간 분석에서 하는 게 더 적절하다는 관점을 유지한다.
+- 조회수 해석:
+  - 낮으면 관심 부족, 표지/썸네일 문제, 초반 3초 문제로 본다.
+- 좋아요 해석:
+  - 낮으면 공감 부족, "내 얘기다" 느낌 부족, 감성 터치 부족으로 본다.
+- 댓글 해석:
+  - 낮으면 소통 유도/참여 설계 부족으로 본다.
+  - 예뻐요, 좋아요 같은 단순 칭찬만 달리는 패턴이면 진짜 대화가 열리지 않은 상태로 본다.
+- 공유 해석:
+  - 낮으면 자극이나 정보가 부족하고, "이거 너 얘기 아님?" 하고 남에게 보내기 애매한 콘텐츠로 본다.
+- 저장 해석:
+  - 낮으면 다시 볼 필요가 없는 콘텐츠, 가치 부족, 휘발성 강한 콘텐츠로 본다.
+- Action은 가장 약한 지표의 원인을 먼저 해결하는 방향으로 쓴다.
+- Analysis는 세 점수와 세부 지표가 어떻게 연결되는지 설명한다.
 
 데이터:
 - 업로드 날짜: ${submission.uploadDate ?? ""}
@@ -90,6 +116,18 @@ export async function analyzeSubmission(submission) {
 참고 raw 값:
 - 가치 raw: ${formatScore(valueRaw)}%
 - 팬 전환 raw: ${formatScore(fanRaw)} per 1000
+- 조회수/도달 비율: ${formatScore(viewRate)}%
+- 좋아요/도달 비율: ${formatScore(likeRate)}%
+- 댓글/도달 비율: ${formatScore(commentRate)}%
+- 공유/조회수 비율: ${formatScore(shareRate)}%
+- 저장/조회수 비율: ${formatScore(saveRate)}%
+
+저조 지표 참고 기준:
+- 조회수/도달 비율 ${LOW_VIEW_RATE_BENCHMARK}% 미만이면 관심/초반 3초 이슈 가능성
+- 좋아요/도달 비율 ${LOW_LIKE_RATE_BENCHMARK}% 미만이면 공감 부족 가능성
+- 댓글/도달 비율 ${LOW_COMMENT_RATE_BENCHMARK}% 미만이면 참여 유도 부족 가능성
+- 공유/조회수 비율 ${LOW_SHARE_RATE_BENCHMARK}% 미만이면 전파성 부족 가능성
+- 저장/조회수 비율 ${LOW_SAVE_RATE_BENCHMARK}% 미만이면 정보 가치 부족 가능성
 `.trim();
 
   const response = await client.responses.create({

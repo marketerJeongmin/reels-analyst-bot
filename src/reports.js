@@ -1,5 +1,10 @@
 const TIMEZONE = process.env.REPORT_TIMEZONE || "Asia/Seoul";
 const FAN_SCORE_BENCHMARK = 6.3;
+const LOW_VIEW_RATE_BENCHMARK = 1.0;
+const LOW_LIKE_RATE_BENCHMARK = 0.6;
+const LOW_COMMENT_RATE_BENCHMARK = 0.08;
+const LOW_SHARE_RATE_BENCHMARK = 0.25;
+const LOW_SAVE_RATE_BENCHMARK = 0.4;
 
 export async function buildWeeklyReport(rows, now = new Date()) {
   const current = getZonedParts(now);
@@ -63,6 +68,11 @@ function renderPeriodicReport(kind, rows, startDate, endDate) {
   const averageHook = average(scoredRows.map((row) => row.hookScore));
   const averageValue = average(scoredRows.map((row) => row.valueScore));
   const averageFan = average(scoredRows.map((row) => row.fanScore));
+  const averageLikeRate = average(scoredRows.map((row) => row.likeRate));
+  const averageCommentRate = average(scoredRows.map((row) => row.commentRate));
+  const averageShareRate = average(scoredRows.map((row) => row.shareRate));
+  const averageSaveRate = average(scoredRows.map((row) => row.saveRate));
+  const averageViewRate = average(scoredRows.map((row) => row.viewRate));
 
   const byCategory = groupBy(scoredRows, "category");
   const categoryLines = Object.entries(byCategory)
@@ -80,7 +90,14 @@ function renderPeriodicReport(kind, rows, startDate, endDate) {
   const repeatWatchRows = scoredRows.filter((row) => row.views > row.reach);
   const topCommentary = extractCommonKeywords(scoredRows.map((row) => row.commentary).filter(Boolean));
 
-  const actions = buildActions(scoredRows);
+  const metricDiagnosis = buildMetricDiagnosis({
+    averageViewRate,
+    averageLikeRate,
+    averageCommentRate,
+    averageShareRate,
+    averageSaveRate
+  });
+  const actions = buildActions(scoredRows, metricDiagnosis);
 
   return [
     `### ${kind === "weekly" ? "주간" : "월간"} 릴스 리포트`,
@@ -91,6 +108,13 @@ function renderPeriodicReport(kind, rows, startDate, endDate) {
     `평균 후킹 점수: ${formatOne(averageHook)}점`,
     `평균 가치 점수: ${formatOne(averageValue)}점`,
     `평균 팬 전환 점수: ${formatOne(averageFan)}점`,
+    "",
+    "**지표별 진단**",
+    `- 조회수: ${metricDiagnosis.views}`,
+    `- 좋아요: ${metricDiagnosis.likes}`,
+    `- 댓글: ${metricDiagnosis.comments}`,
+    `- 공유: ${metricDiagnosis.shares}`,
+    `- 저장: ${metricDiagnosis.saves}`,
     "",
     "**분류별 성과**",
     categoryLines || "- 분류 데이터 없음",
@@ -114,7 +138,7 @@ function renderPeriodicReport(kind, rows, startDate, endDate) {
   ].join("\n");
 }
 
-function buildActions(rows) {
+function buildActions(rows, metricDiagnosis) {
   const infoRows = rows.filter((row) => row.category === "정보성");
   const storyRows = rows.filter((row) => row.category === "내 스토리");
   const avgInfoValue = average(infoRows.map((row) => row.valueScore));
@@ -137,7 +161,71 @@ function buildActions(rows) {
     actions.push("현재 후킹 구조는 유지하고, 중반 정보 밀도를 더 높여 저장률을 키워보세요.");
   }
 
+  if (metricDiagnosis.lowest === "views") {
+    actions.push("조회수가 약하면 제목, 표지 문구, 초반 3초 진입 문장을 먼저 손보세요.");
+  } else if (metricDiagnosis.lowest === "likes") {
+    actions.push("좋아요가 약하면 공감 카피를 더 넣어 '이거 내 얘기다' 느낌을 강화해보세요.");
+  } else if (metricDiagnosis.lowest === "comments") {
+    actions.push("댓글이 약하면 끝 문장을 의견형 질문으로 바꿔 사람들이 자기 말을 남기게 설계해보세요.");
+  } else if (metricDiagnosis.lowest === "shares") {
+    actions.push("공유가 약하면 '이거 너 얘기 아님?' 하고 보내고 싶어지는 문장이나 비교 포인트를 추가하세요.");
+  } else if (metricDiagnosis.lowest === "saves") {
+    actions.push("저장이 약하면 체크리스트, 비교표, 순서 정리처럼 다시 볼 이유를 더 분명하게 만드세요.");
+  }
+
   return actions.slice(0, 3);
+}
+
+function buildMetricDiagnosis(metrics) {
+  const diagnosis = {
+    views:
+      metrics.averageViewRate < LOW_VIEW_RATE_BENCHMARK
+        ? "관심 부족이나 초반 3초 진입 문제가 의심됩니다."
+        : "관심 유입은 유지되고 있습니다.",
+    likes:
+      metrics.averageLikeRate < LOW_LIKE_RATE_BENCHMARK
+        ? "공감 포인트나 감성 터치가 약할 가능성이 큽니다."
+        : "공감 반응은 유지되고 있습니다.",
+    comments:
+      metrics.averageCommentRate < LOW_COMMENT_RATE_BENCHMARK
+        ? "참여 유도나 대화 설계가 부족할 가능성이 큽니다."
+        : "대화 참여는 열리고 있습니다.",
+    shares:
+      metrics.averageShareRate < LOW_SHARE_RATE_BENCHMARK
+        ? "남에게 보내고 싶을 정도의 전파성이 약할 수 있습니다."
+        : "전파성은 유지되고 있습니다.",
+    saves:
+      metrics.averageSaveRate < LOW_SAVE_RATE_BENCHMARK
+        ? "다시 볼 필요를 느끼게 하는 정보 가치가 부족할 수 있습니다."
+        : "다시 보고 싶은 가치가 유지되고 있습니다."
+  };
+
+  const candidates = [
+    {
+      key: "views",
+      ratio: metrics.averageViewRate / LOW_VIEW_RATE_BENCHMARK
+    },
+    {
+      key: "likes",
+      ratio: metrics.averageLikeRate / LOW_LIKE_RATE_BENCHMARK
+    },
+    {
+      key: "comments",
+      ratio: metrics.averageCommentRate / LOW_COMMENT_RATE_BENCHMARK
+    },
+    {
+      key: "shares",
+      ratio: metrics.averageShareRate / LOW_SHARE_RATE_BENCHMARK
+    },
+    {
+      key: "saves",
+      ratio: metrics.averageSaveRate / LOW_SAVE_RATE_BENCHMARK
+    }
+  ];
+
+  candidates.sort((a, b) => a.ratio - b.ratio);
+  diagnosis.lowest = candidates[0]?.key ?? "views";
+  return diagnosis;
 }
 
 function computeScores(row) {
@@ -146,6 +234,8 @@ function computeScores(row) {
   const saves = toNumber(row.saves);
   const shares = toNumber(row.shares);
   const follows = toNumber(row.follows);
+  const likes = toNumber(row.likes);
+  const comments = toNumber(row.comments);
   const skipRate = normalizeSkipRate(row.skipRate);
 
   const hookScore = clampScore(100 - skipRate);
@@ -156,6 +246,11 @@ function computeScores(row) {
     views,
     reach,
     hookScore,
+    likeRate: safeDivide(likes, reach) * 100,
+    commentRate: safeDivide(comments, reach) * 100,
+    shareRate: safeDivide(shares, views) * 100,
+    saveRate: safeDivide(saves, views) * 100,
+    viewRate: safeDivide(views, reach) * 100,
     valueScore: normalizeToHundred(valueRaw, 2),
     fanScore: normalizeToHundred(fanRaw, FAN_SCORE_BENCHMARK)
   };
