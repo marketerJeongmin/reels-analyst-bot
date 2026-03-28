@@ -1,4 +1,5 @@
 const TIMEZONE = process.env.REPORT_TIMEZONE || "Asia/Seoul";
+const FAN_SCORE_BENCHMARK = 6.3;
 
 export async function buildWeeklyReport(rows, now = new Date()) {
   const current = getZonedParts(now);
@@ -156,7 +157,7 @@ function computeScores(row) {
     reach,
     hookScore,
     valueScore: normalizeToHundred(valueRaw, 2),
-    fanScore: normalizeToHundred(fanRaw, 0.3)
+    fanScore: normalizeToHundred(fanRaw, FAN_SCORE_BENCHMARK)
   };
 }
 

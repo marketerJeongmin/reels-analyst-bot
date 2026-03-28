@@ -1,5 +1,7 @@
 import OpenAI from "openai";
 
+const FAN_SCORE_BENCHMARK = 6.3;
+
 const client = new OpenAI({
   apiKey: process.env.OPENAI_API_KEY
 });
@@ -17,7 +19,7 @@ export async function analyzeSubmission(submission) {
   const valueRaw = safeDivide(saves + shares, views) * 100;
   const fanRaw = safeDivide(follows, reach) * 1000;
   const valueScore = normalizeToHundred(valueRaw, 2);
-  const fanScore = normalizeToHundred(fanRaw, 0.3);
+  const fanScore = normalizeToHundred(fanRaw, FAN_SCORE_BENCHMARK);
 
   const prompt = `
 너는 인스타그램 정보형 숏폼 콘텐츠 분석가야.
@@ -54,7 +56,7 @@ export async function analyzeSubmission(submission) {
 - 가치 점수는 저장+공유 비율 2%를 100점 기준으로 정규화한 점수다.
 - 가치 점수 80점 이상: "알짜배기 콘텐츠! 사람들이 이 정보를 소중하게 여기고 있습니다."
 - 가치 점수 25점 미만: "알맹이 부족. 시청자가 나중에 또 봐야지 할만한 팁을 한 가지 더 넣어보세요."
-- 팬 전환 점수는 팔로우/도달 비율의 per-1000 값 0.3을 100점 기준으로 정규화한 점수다.
+- 팬 전환 점수는 팔로우/도달 비율의 per-1000 값 ${FAN_SCORE_BENCHMARK}를 100점 기준으로 정규화한 점수다.
 - 팬 전환 점수 80점 이상: "슈퍼 루키! 둥지님의 브랜딩이 시청자에게 먹히고 있습니다."
 - 팬 전환 점수 35점 미만: "익명 크리에이터 주의. 영상 마지막에 둥지님만의 색깔을 더 드러내 보세요."
 
