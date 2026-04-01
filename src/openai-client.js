@@ -54,9 +54,12 @@ async function createDraftAnalysis({ model, submission, metrics, comparisonConte
 - 후킹/가치/팬전환 3점수는 그대로 해석한다.
 - 조회수/좋아요/댓글/공유/저장이 낮을 때의 의미를 참고해 원인을 해석한다.
 - 영상의 역할을 하나로 분류한다. 역할 후보는 "조회수형", "팔로우 전환형", "저장형", "댓글형" 중 하나다.
-- 내 코멘트를 숫자와 엮어서 해석한다.
-- 유사 영상 대비 비교 메모가 가능하면 한 줄로 만든다.
-- 액션은 추상적으로 쓰지 말고, 바로 다음 영상에서 바꿀 장면/문장/구조 수준으로 구체적으로 쓴다.
+- 역할은 단순 조회수보다 실제 반응이 강한 신호를 우선한다. 댓글이 강하면 댓글형, 팔로우가 강하면 팔로우 전환형, 저장/공유가 강하면 저장형, 나머지는 조회수형으로 본다.
+- 내 코멘트를 단순 언급하지 말고, 코멘트가 지적한 문제와 숫자가 일치하는지까지 해석한다.
+- 내 코멘트의 구체 표현을 최소 1개는 해석 근거로 사용하고, 맞는 부분과 어긋나는 부분이 있으면 같이 적는다.
+- 유사 영상 대비 비교 메모가 가능하면 한 줄로 만든다. 같은 분류보다 같은 시리즈/같은 흐름을 우선 비교한다.
+- 액션은 추상적으로 쓰지 말고, 바로 다음 영상에서 바꿀 첫 장면/첫 문장/자막/CTA 수준으로 구체적으로 쓴다.
+- 출력은 짧고 실무적으로 유지한다. 각 항목은 1문장 또는 아주 짧은 2문장까지만 허용한다.
 
 출력 형식:
 반드시 JSON 객체만 출력한다. 마크다운 금지.
@@ -81,6 +84,13 @@ async function createDraftAnalysis({ model, submission, metrics, comparisonConte
 - 댓글 낮음: 소통 불능, 참여 유도 부족, 질문 설계 부족 가능성
 - 공유 낮음: 자극/정보 부족, 남에게 보내기 애매한 콘텐츠일 가능성
 - 저장 낮음: 다시 볼 필요 없음, 가치 부족, 휘발성 강한 콘텐츠일 가능성
+
+액션 작성 기준:
+- 조회수 낮음이면 제목, 첫 장면, 표지 문구, 첫 3초 자막 중 무엇을 바꿀지 구체적으로 적는다.
+- 좋아요 낮음이면 공감 문장, 감정 번역, 자기 경험 한 줄을 추가하는 방향으로 적는다.
+- 댓글 낮음이면 선택형 질문, 찬반형 질문, 댓글 보상형 CTA 중 무엇을 넣을지 적는다.
+- 공유 낮음이면 비교, 경고, 공감, 전파성 있는 문장을 추가하는 방향으로 적는다.
+- 저장 낮음이면 체크리스트, 비교표, 단계 정리, 숫자 정리 중 하나를 넣는 방향으로 적는다.
 
 등급 기준:
 - 후킹 80점 이상: 도입 강함
@@ -153,9 +163,11 @@ async function reviewDraftAnalysis({
 - 후킹/가치/팬전환 3점수 해석이 숫자와 어긋나지 않는가
 - 영상 역할 분류가 현재 지표 조합과 맞는가
 - 내 코멘트가 표면적으로만 언급되지 않고 해석에 실제 반영되었는가
+- 내 코멘트가 지적한 문제와 숫자가 실제로 연결되어 있는가
 - 유사 영상 비교 메모가 가능할 때 충분히 구체적인가
-- 추천 액션이 "후킹 강화"처럼 뭉뚱그려지지 않고 장면/문장/구조 수준으로 구체적인가
-- 맨날 같은 말처럼 들리지 않게 이 영상만의 의미를 한 줄이라도 말하는가
+- 추천 액션이 "후킹 강화"처럼 뭉뚱그려지지 않고 장면/문장/구조/CTA 수준으로 구체적인가
+- Action / Analysis / Memo / Context가 길어지거나 같은 말을 반복하지 않는가
+- 맨날 같은 말처럼 들리지 않게 이 영상만의 역할과 차이를 한 줄이라도 말하는가
 
 반드시 JSON 객체만 출력한다.
 키는 그대로 유지:
@@ -264,15 +276,28 @@ function tryJsonParse(value) {
 }
 
 function buildComparisonContext(submission, historicalRows) {
-  const sameCategoryRows = historicalRows
+  const sameSeriesKey = normalizeSeriesKey(submission.topic || submission.hook || "");
+  const sortedHistoricalRows = [...historicalRows].sort((a, b) =>
+    String(a.submitted_at || a.submittedAt || "").localeCompare(String(b.submitted_at || b.submittedAt || ""))
+  );
+
+  const sameSeriesRows = sameSeriesKey
+    ? sortedHistoricalRows
+        .filter((row) => normalizeSeriesKey(row.topic || row.hook || "") === sameSeriesKey)
+        .slice(-3)
+    : [];
+
+  const sameCategoryRows = sortedHistoricalRows
     .filter((row) => (row.category || "") === (submission.category || ""))
     .slice(-3);
 
-  if (sameCategoryRows.length === 0) {
+  const comparisonRows = sameSeriesRows.length > 0 ? sameSeriesRows : sameCategoryRows;
+
+  if (comparisonRows.length === 0) {
     return "비교 가능한 이전 유사 영상이 아직 충분하지 않습니다.";
   }
 
-  const lines = sameCategoryRows.map((row) => {
+  const lines = comparisonRows.map((row) => {
     const metrics = computeMetrics({
       likes: row.likes,
       comments: row.comments,
@@ -284,10 +309,13 @@ function buildComparisonContext(submission, historicalRows) {
       follows: row.follows
     });
 
-    return `- ${row.topic || "주제 없음"} | 후킹 ${formatScore(metrics.hookScore)} | 가치 ${formatScore(metrics.valueScore)} | 팬전환 ${formatScore(metrics.fanScore)} | 역할 ${row.content_role || "미분류"}`;
+    const memo = shortenText(row.commentary || row.commentary_interpretation || "", 48);
+    const role = row.content_role || row.contentRole || "미분류";
+    return `- ${row.topic || "주제 없음"} | 역할 ${role} | 후킹 ${formatScore(metrics.hookScore)} | 가치 ${formatScore(metrics.valueScore)} | 팬전환 ${formatScore(metrics.fanScore)}${memo ? ` | 메모 ${memo}` : ""}`;
   });
 
-  return lines.join("\n");
+  const heading = sameSeriesRows.length > 0 ? "같은 시리즈 비교:" : "같은 분류 최근 영상:";
+  return [heading, ...lines].join("\n");
 }
 
 function buildCommentaryContext(commentary) {
@@ -295,7 +323,7 @@ function buildCommentaryContext(commentary) {
     return "코멘트 없음";
   }
 
-  return `원문 코멘트: ${commentary}`;
+  return shortenText(`원문 코멘트: ${commentary}`, 120);
 }
 
 function computeMetrics(submission) {
@@ -313,6 +341,13 @@ function computeMetrics(submission) {
   const fanRaw = safeDivide(follows, reach) * 1000;
 
   return {
+    views,
+    reach,
+    follows,
+    likes,
+    comments,
+    saves,
+    shares,
     hookScore,
     valueRaw,
     fanRaw,
@@ -327,32 +362,86 @@ function computeMetrics(submission) {
 }
 
 function normalizeRole(role, metrics) {
-  if (["조회수형", "팔로우 전환형", "저장형", "댓글형"].includes(role)) {
+  const inferredRole = inferRole(metrics);
+  const allowedRoles = ["조회수형", "팔로우 전환형", "저장형", "댓글형"];
+
+  if (!allowedRoles.includes(role)) {
+    return inferredRole;
+  }
+
+  if (role === inferredRole) {
     return role;
   }
 
-  if (metrics.commentRate >= 0.5) {
-    return "댓글형";
+  if (role === "조회수형" && inferredRole !== "조회수형") {
+    return inferredRole;
   }
 
-  if (metrics.fanScore >= 80 && metrics.fanScore >= metrics.valueScore + 10) {
-    return "팔로우 전환형";
-  }
-
-  if (metrics.valueScore >= 55 && metrics.valueScore >= metrics.fanScore) {
-    return "저장형";
-  }
-
-  if (metrics.viewRate >= 110 || metrics.hookScore >= 65) {
-    return "조회수형";
-  }
-
-  return metrics.fanScore >= metrics.valueScore ? "팔로우 전환형" : "저장형";
+  return role;
 }
 
 function normalizeSkipRate(value) {
   const raw = toNumber(value);
   return raw > 1 ? raw : raw * 100;
+}
+
+function normalizeSeriesKey(value) {
+  const text = String(value || "").trim();
+  if (!text) {
+    return "";
+  }
+
+  const match = text.match(/^(.*?)(?:\s*\(?\d+\s*(?:편|탄|부|화|회|번째)\)?)(?:\s*.*)?$/);
+  if (!match?.[1]) {
+    return "";
+  }
+
+  return match[1].replace(/[\s().,!?~\-_:|]/g, "");
+}
+
+function shortenText(value, maxLength) {
+  const compact = String(value || "").replace(/\s+/g, " ").trim();
+
+  if (!compact) {
+    return "";
+  }
+
+  if (compact.length <= maxLength) {
+    return compact;
+  }
+
+  const firstClause = compact.split(/[。.!?]/)[0].trim();
+  const base = firstClause.length > 0 ? firstClause : compact;
+
+  if (base.length <= maxLength) {
+    return base;
+  }
+
+  return `${base.slice(0, Math.max(0, maxLength - 1)).trimEnd()}…`;
+}
+
+function inferRole(metrics) {
+  const roleScores = [
+    {
+      role: "댓글형",
+      score: metrics.commentRate * 100 + Math.log1p(metrics.comments) * 12
+    },
+    {
+      role: "팔로우 전환형",
+      score: metrics.fanScore + Math.log1p(metrics.follows) * 4
+    },
+    {
+      role: "저장형",
+      score: metrics.valueScore + metrics.saveRate * 20 + metrics.shareRate * 10
+    },
+    {
+      role: "조회수형",
+      score: metrics.hookScore + Math.max(metrics.viewRate - 100, 0) * 0.15
+    }
+  ];
+
+  roleScores.sort((a, b) => b.score - a.score);
+  return roleScores[0]?.role || "조회수형";
 }
 
 function defaultHookLabel(score) {

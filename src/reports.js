@@ -111,13 +111,18 @@ function renderPeriodicReport(kind, rows, startDate, endDate) {
   const repeatWatchRows = scoredRows.filter((row) => row.views > row.reach);
   const topCommentary = extractCommonKeywords(scoredRows.map((row) => row.commentary).filter(Boolean));
   const roleSummary = summarizeRoles(scoredRows);
-  const topInsights = summarizeText(scoredRows.map((row) => row.key_insight || row.keyInsight));
+  const topInsights = summarizeText(scoredRows.map((row) => row.key_insight || row.keyInsight), 1, 55);
   const repeatedActions = summarizeText(
-    scoredRows.map((row) => row.recommended_action || row.recommendedAction)
+    scoredRows.map((row) => row.recommended_action || row.recommendedAction),
+    1,
+    55
   );
   const commentaryPatterns = summarizeText(
-    scoredRows.map((row) => row.commentary_interpretation || row.commentaryInterpretation)
+    scoredRows.map((row) => row.commentary_interpretation || row.commentaryInterpretation),
+    1,
+    55
   );
+  const updateTrendSummary = summarizeText(scoredRows.map((row) => row.update_trend), 1, 65);
 
   const metricDiagnosis = buildMetricDiagnosis({
     averageViewRate,
@@ -166,8 +171,8 @@ function renderPeriodicReport(kind, rows, startDate, endDate) {
     topCommentary
       ? `- 코멘트 반복 키워드: ${topCommentary}`
       : "- 코멘트 반복 키워드는 아직 적습니다.",
-    summarizeText(scoredRows.map((row) => row.update_trend))
-      ? `- 업데이트 추이 메모: ${summarizeText(scoredRows.map((row) => row.update_trend))}`
+    updateTrendSummary
+      ? `- 업데이트 추이 메모: ${updateTrendSummary}`
       : "- 업데이트 추이 메모는 아직 적습니다.",
     topInsights
       ? `- 반복 인사이트: ${topInsights}`
@@ -198,11 +203,16 @@ function consolidateRows(rows) {
 }
 
 function buildRowKey(row) {
+  const parsedDate = parseUploadDate(row.upload_date || row.uploadDate || "");
+  const uploadDate = parsedDate ? formatDate(parsedDate) : row.upload_date || row.uploadDate || "";
+  const category = row.category || "";
+  const normalizedHook = normalizeContentKey(row.hook || "");
+  const normalizedTopic = normalizeContentKey(row.topic || "");
+
   return [
-    row.upload_date || row.uploadDate || "",
-    row.topic || "",
-    row.hook || "",
-    row.category || ""
+    uploadDate,
+    category,
+    normalizedHook || normalizedTopic
   ].join("::");
 }
 
@@ -269,29 +279,33 @@ function buildActions(rows, metricDiagnosis) {
   const actions = [];
 
   if (avgInfoValue >= avgStoryValue && infoRows.length > 0) {
-    actions.push("정보성 포맷 비중을 조금 더 높여 저장/공유 강점을 이어가세요.");
+    actions.push("정보성은 '기준 1개 + 사례 1개'로 쪼개 저장 이유를 더 분명하게 만드세요.");
   }
 
   if (storyRows.length > 0 && avgStoryValue < avgInfoValue) {
-    actions.push("내 스토리 영상은 순수 서사보다 정보 한 가지를 섞는 방식으로 보강해보세요.");
+    actions.push("스토리형은 경험 한 줄 뒤에 숫자나 기준 한 줄을 붙여 감정과 정보를 같이 잡으세요.");
   }
 
   if (avgHook < 60) {
-    actions.push("첫 3초 자막에 금액, 지역명, 결론 중 하나를 더 크게 배치해 후킹을 보강하세요.");
+    actions.push("첫 2초에 질문보다 지역명·숫자·결론을 먼저 보여주고, 첫 자막과 표지를 같은 문장으로 맞추세요.");
   } else {
-    actions.push("현재 후킹 구조는 유지하고, 중반 정보 밀도를 더 높여 저장률을 키워보세요.");
+    actions.push("후킹은 유지하고, 중간 장면에 비교표나 근거 컷을 넣어 이탈을 더 줄이세요.");
   }
 
-  if (metricDiagnosis.lowest === "views") {
-    actions.push("조회수가 약하면 제목, 표지 문구, 초반 3초 진입 문장을 먼저 손보세요.");
-  } else if (metricDiagnosis.lowest === "likes") {
-    actions.push("좋아요가 약하면 공감 카피를 더 넣어 '이거 내 얘기다' 느낌을 강화해보세요.");
-  } else if (metricDiagnosis.lowest === "comments") {
-    actions.push("댓글이 약하면 끝 문장을 의견형 질문으로 바꿔 사람들이 자기 말을 남기게 설계해보세요.");
-  } else if (metricDiagnosis.lowest === "shares") {
-    actions.push("공유가 약하면 '이거 너 얘기 아님?' 하고 보내고 싶어지는 문장이나 비교 포인트를 추가하세요.");
-  } else if (metricDiagnosis.lowest === "saves") {
-    actions.push("저장이 약하면 체크리스트, 비교표, 순서 정리처럼 다시 볼 이유를 더 분명하게 만드세요.");
+  const lowestActionMap = {
+    views:
+      "조회수가 약하면 제목·표지·첫 자막을 한 문장으로 묶고, 첫 장면에 결론이나 지역명을 먼저 보여주세요.",
+    likes:
+      "좋아요가 약하면 본문 앞에 '저도 처음엔 헷갈렸어요' 같은 공감 한 줄과 개인 경험 한 줄을 더하세요.",
+    comments:
+      "댓글이 약하면 마지막 질문을 선택형이나 찬반형으로 바꾸고, 댓글 보상 문구를 같이 넣어보세요.",
+    shares:
+      "공유가 약하면 비교/경고/전후 차이 같은 문장을 넣어 '이거 너 얘기 아님?' 감을 만들어보세요.",
+    saves: "저장이 약하면 체크리스트나 3단계 정리처럼 다시 볼 이유가 남는 구조로 바꿔보세요."
+  };
+
+  if (lowestActionMap[metricDiagnosis.lowest]) {
+    actions.push(lowestActionMap[metricDiagnosis.lowest]);
   }
 
   return actions.slice(0, 3);
@@ -301,24 +315,24 @@ function buildMetricDiagnosis(metrics) {
   const diagnosis = {
     views:
       metrics.averageViewRate < LOW_VIEW_RATE_BENCHMARK
-        ? "관심 부족이나 초반 3초 진입 문제가 의심됩니다."
-        : "관심 유입은 유지되고 있습니다.",
+        ? "초반 관심/진입이 약합니다."
+        : "초반 관심은 유지됩니다.",
     likes:
       metrics.averageLikeRate < LOW_LIKE_RATE_BENCHMARK
-        ? "공감 포인트나 감성 터치가 약할 가능성이 큽니다."
-        : "공감 반응은 유지되고 있습니다.",
+        ? "공감 포인트가 약합니다."
+        : "공감 반응은 유지됩니다.",
     comments:
       metrics.averageCommentRate < LOW_COMMENT_RATE_BENCHMARK
-        ? "참여 유도나 대화 설계가 부족할 가능성이 큽니다."
+        ? "참여 설계가 약합니다."
         : "대화 참여는 열리고 있습니다.",
     shares:
       metrics.averageShareRate < LOW_SHARE_RATE_BENCHMARK
-        ? "남에게 보내고 싶을 정도의 전파성이 약할 수 있습니다."
+        ? "전파성이 약합니다."
         : "전파성은 유지되고 있습니다.",
     saves:
       metrics.averageSaveRate < LOW_SAVE_RATE_BENCHMARK
-        ? "다시 볼 필요를 느끼게 하는 정보 가치가 부족할 수 있습니다."
-        : "다시 보고 싶은 가치가 유지되고 있습니다."
+        ? "재방문 가치가 약합니다."
+        : "재방문 가치는 유지됩니다."
   };
 
   const candidates = [
@@ -560,9 +574,9 @@ function summarizeRoles(rows) {
     .join("\n");
 }
 
-function summarizeText(values) {
+function summarizeText(values, limit = 1, maxLength = 90) {
   const cleaned = values
-    .map((value) => String(value || "").trim())
+    .map((value) => normalizeSummaryText(value))
     .filter(Boolean);
 
   if (cleaned.length === 0) {
@@ -576,7 +590,42 @@ function summarizeText(values) {
 
   return [...counts.entries()]
     .sort((a, b) => b[1] - a[1])
-    .slice(0, 2)
-    .map(([value]) => value)
+    .slice(0, limit)
+    .map(([value]) => shortenSummaryText(value, maxLength))
     .join(" / ");
+}
+
+function normalizeSummaryText(value) {
+  return String(value || "")
+    .replace(/^[-•\d①②③④⑤⑥⑦⑧⑨⑩.\)\s]+/, "")
+    .replace(/^(Action|Analysis|Memo|Context)\s*:\s*/i, "")
+    .replace(/\s+/g, " ")
+    .trim();
+}
+
+function shortenSummaryText(value, maxLength) {
+  const compact = String(value || "")
+    .replace(/\s+/g, " ")
+    .trim();
+
+  if (!compact) {
+    return "";
+  }
+
+  const firstClause = compact.split(/(?<!\d)[.!?,](?!\d)|[。]/)[0].trim();
+  const base = firstClause || compact;
+
+  if (base.length <= maxLength) {
+    return base;
+  }
+
+  return `${base.slice(0, Math.max(0, maxLength - 1)).trimEnd()}…`;
+}
+
+function normalizeContentKey(value) {
+  return String(value || "")
+    .replace(/\s+/g, "")
+    .replace(/[(){}\[\].,!?~\-_:|'"`]/g, "")
+    .replace(/의/g, "")
+    .trim();
 }
