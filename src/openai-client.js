@@ -58,8 +58,9 @@ async function createDraftAnalysis({ model, submission, metrics, comparisonConte
 - 내 코멘트를 단순 언급하지 말고, 코멘트가 지적한 문제와 숫자가 일치하는지까지 해석한다.
 - 내 코멘트의 구체 표현을 최소 1개는 해석 근거로 사용하고, 맞는 부분과 어긋나는 부분이 있으면 같이 적는다.
 - 유사 영상 대비 비교 메모가 가능하면 한 줄로 만든다. 같은 분류보다 같은 시리즈/같은 흐름을 우선 비교한다.
-- 액션은 추상적으로 쓰지 말고, 바로 다음 영상에서 바꿀 첫 장면/첫 문장/자막/CTA 수준으로 구체적으로 쓴다.
-- 출력은 짧고 실무적으로 유지한다. 각 항목은 1문장 또는 아주 짧은 2문장까지만 허용한다.
+- 액션은 문구 예시를 길게 쓰지 말고, 바로 다음 영상에서 바꿀 구조만 말한다.
+- 액션은 첫 장면, 첫 자막, 순서, 비교표, CTA 같은 구조 단위로 쓴다.
+- 출력은 짧고 실무적으로 유지한다. 각 항목은 1문장만 허용한다.
 
 출력 형식:
 반드시 JSON 객체만 출력한다. 마크다운 금지.
@@ -78,6 +79,15 @@ async function createDraftAnalysis({ model, submission, metrics, comparisonConte
   "comparisonNote": string
 }
 
+각 키 의미:
+- headline: 한 줄 결론
+- keyInsight: 잘된 이유
+- analysisLine: 아쉬운 이유
+- commentaryInterpretation: 내 코멘트 검증
+- recommendedAction: 다음에 바꿀 것
+- memoLine: 비교 메모가 없을 때만 쓰는 짧은 보충 한 줄
+- comparisonNote: 비교가 의미 있을 때만 쓰는 짧은 메모, 없으면 빈 문자열
+
 지표 해석 기준:
 - 조회수 낮음: 관심 부족, 표지/썸네일 문제, 초반 3초 문제 가능성
 - 좋아요 낮음: 공감 부족, "내 얘기다" 느낌 부족, 감성 자극 부족 가능성
@@ -91,6 +101,7 @@ async function createDraftAnalysis({ model, submission, metrics, comparisonConte
 - 댓글 낮음이면 선택형 질문, 찬반형 질문, 댓글 보상형 CTA 중 무엇을 넣을지 적는다.
 - 공유 낮음이면 비교, 경고, 공감, 전파성 있는 문장을 추가하는 방향으로 적는다.
 - 저장 낮음이면 체크리스트, 비교표, 단계 정리, 숫자 정리 중 하나를 넣는 방향으로 적는다.
+- 문구 예시는 쓰지 말고 "첫 장면에 비교표 먼저", "마지막 질문을 선택형으로"처럼 구조를 적는다.
 
 등급 기준:
 - 후킹 80점 이상: 도입 강함
@@ -166,7 +177,8 @@ async function reviewDraftAnalysis({
 - 내 코멘트가 지적한 문제와 숫자가 실제로 연결되어 있는가
 - 유사 영상 비교 메모가 가능할 때 충분히 구체적인가
 - 추천 액션이 "후킹 강화"처럼 뭉뚱그려지지 않고 장면/문장/구조/CTA 수준으로 구체적인가
-- Action / Analysis / Memo / Context가 길어지거나 같은 말을 반복하지 않는가
+- 문구 예시를 길게 제시하지 않고 실제로 바꿀 구조만 말하는가
+- 잘된 이유 / 아쉬운 이유 / 코멘트 검증이 서로 같은 말을 반복하지 않는가
 - 맨날 같은 말처럼 들리지 않게 이 영상만의 역할과 차이를 한 줄이라도 말하는가
 
 반드시 JSON 객체만 출력한다.
@@ -211,34 +223,43 @@ function normalizeAnalysis(analysis, metrics) {
     valueLabel: analysis.valueLabel || defaultValueLabel(metrics.valueScore),
     fanLabel: analysis.fanLabel || defaultFanLabel(metrics.fanScore),
     contentRole: normalizeRole(analysis.contentRole, metrics),
-    keyInsight: analysis.keyInsight || "이 영상이 계정에서 어떤 역할을 하는지 더 분명히 봐야 합니다.",
+    keyInsight: analysis.keyInsight || "팔로우는 붙었지만 무엇이 남았는지는 더 분명히 봐야 합니다.",
     recommendedAction:
-      analysis.recommendedAction || "다음 영상에서는 첫 장면과 첫 문장을 더 구체적으로 바꿔보세요.",
-    analysisLine: analysis.analysisLine || "세 점수와 세부 지표를 함께 보면 이 영상의 강약이 더 또렷해집니다.",
-    memoLine: analysis.memoLine || "내 코멘트와 숫자를 함께 보면 다음 수정 포인트가 더 선명해집니다.",
+      analysis.recommendedAction || "첫 장면, 첫 자막, 질문 구조 중 하나를 먼저 바꿔보세요.",
+    analysisLine: analysis.analysisLine || "강점은 있지만 다시 보거나 반응할 이유는 더 선명해야 합니다.",
+    memoLine: analysis.memoLine || "",
     commentaryInterpretation:
-      analysis.commentaryInterpretation || "내 코멘트 해석이 충분치 않아 다음에 더 구체적으로 확인해볼 필요가 있습니다.",
-    comparisonNote: analysis.comparisonNote || "비교할 유사 영상 데이터가 아직 충분하지 않습니다."
+      analysis.commentaryInterpretation || "내 코멘트와 숫자가 아직 충분히 맞물리지 않았습니다.",
+    comparisonNote: analysis.comparisonNote || ""
   };
 }
 
 function renderReport(analysis, metrics) {
-  return [
+  const lines = [
     "### 🐣 [Dungji] 릴스 성과 리포트",
-    `**"${analysis.headline}"**`,
+    `**"${wrapText(analysis.headline)}"**`,
     "",
-    `- 🎯 후킹: ${formatScore(metrics.hookScore)}점 (${analysis.hookLabel})`,
-    `- 💎 가치: ${formatScore(metrics.valueScore)}점 (${analysis.valueLabel})`,
-    `- 👤 팬 전환: ${formatScore(metrics.fanScore)}점 (${analysis.fanLabel})`,
+    `- 🎯 후킹: ${formatScore(metrics.hookScore)}점`,
+    `  ${wrapText(analysis.hookLabel)}`,
+    `- 💎 가치: ${formatScore(metrics.valueScore)}점`,
+    `  ${wrapText(analysis.valueLabel)}`,
+    `- 👤 팬 전환: ${formatScore(metrics.fanScore)}점`,
+    `  ${wrapText(analysis.fanLabel)}`,
     `- 🧭 영상 역할: ${analysis.contentRole}`,
     "",
-    "---",
-    "💡 둥지의 추천:",
-    `1. Action: ${analysis.recommendedAction}`,
-    `2. Analysis: ${analysis.analysisLine}`,
-    `3. Memo: ${analysis.memoLine}`,
-    `4. Context: ${analysis.comparisonNote}`
-  ].join("\n");
+    `- 잘된 이유: ${wrapText(analysis.keyInsight)}`,
+    `- 아쉬운 이유: ${wrapText(analysis.analysisLine)}`,
+    `- 코멘트 검증: ${wrapText(analysis.commentaryInterpretation)}`,
+    `- 다음에 바꿀 것: ${wrapText(analysis.recommendedAction)}`
+  ];
+
+  if (analysis.comparisonNote) {
+    lines.push(`- 비교 메모: ${wrapText(analysis.comparisonNote)}`);
+  } else if (analysis.memoLine) {
+    lines.push(`- 보충 메모: ${wrapText(analysis.memoLine)}`);
+  }
+
+  return lines.join("\n");
 }
 
 async function runTextResponse(model, input) {
@@ -418,6 +439,38 @@ function shortenText(value, maxLength) {
   }
 
   return `${base.slice(0, Math.max(0, maxLength - 1)).trimEnd()}…`;
+}
+
+function wrapText(value, maxWidth = 48) {
+  const compact = String(value || "").replace(/\s+/g, " ").trim();
+
+  if (!compact) {
+    return "";
+  }
+
+  const words = compact.split(" ");
+  const lines = [];
+  let current = "";
+
+  for (const word of words) {
+    const candidate = current ? `${current} ${word}` : word;
+    if (candidate.length <= maxWidth) {
+      current = candidate;
+      continue;
+    }
+
+    if (current) {
+      lines.push(current);
+    }
+
+    current = word;
+  }
+
+  if (current) {
+    lines.push(current);
+  }
+
+  return lines.join("\n  ");
 }
 
 function inferRole(metrics) {
