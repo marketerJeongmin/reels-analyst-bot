@@ -9,16 +9,25 @@ const LOW_SAVE_RATE_BENCHMARK = 0.4;
 export async function buildWeeklyReport(rows, now = new Date()) {
   const current = getZonedParts(now);
   const weekStart = startOfWeek(current);
-  const filtered = rows.filter((row) => {
+  let filtered = rows.filter((row) => {
     const date = parseUploadDate(getUploadDateValue(row));
     return date && compareDate(date, weekStart) >= 0 && compareDate(date, current) <= 0;
   });
+  let periodStart = weekStart;
+
+  if (filtered.length === 0) {
+    periodStart = shiftDate(current, -6);
+    filtered = rows.filter((row) => {
+      const date = parseUploadDate(getUploadDateValue(row));
+      return date && compareDate(date, periodStart) >= 0 && compareDate(date, current) <= 0;
+    });
+  }
 
   return {
     reportKey: `${current.year}-W${getWeekKey(current)}`,
     title: "주간 릴스 리포트",
-    periodLabel: `${formatDate(weekStart)} ~ ${formatDate(current)}`,
-    content: renderPeriodicReport("weekly", filtered, weekStart, current)
+    periodLabel: `${formatDate(periodStart)} ~ ${formatDate(current)}`,
+    content: renderPeriodicReport("weekly", filtered, periodStart, current)
   };
 }
 
@@ -49,7 +58,9 @@ export function shouldSendMonthlyReport(now = new Date()) {
 }
 
 function renderPeriodicReport(kind, rows, startDate, endDate) {
-  if (rows.length === 0) {
+  const consolidatedRows = consolidateRows(rows);
+
+  if (consolidatedRows.length === 0) {
     return [
       `### ${kind === "weekly" ? "주간" : "월간"} 리포트`,
       "",
@@ -59,7 +70,7 @@ function renderPeriodicReport(kind, rows, startDate, endDate) {
     ].join("\n");
   }
 
-  const scoredRows = rows.map((row) => {
+  const scoredRows = consolidatedRows.map((row) => {
     const metrics = computeScores(row);
     return { ...row, ...metrics };
   });
@@ -85,8 +96,18 @@ function renderPeriodicReport(kind, rows, startDate, endDate) {
     })
     .join("\n");
 
-  const bestRow = [...scoredRows].sort((a, b) => b.valueScore + b.fanScore - (a.valueScore + a.fanScore))[0];
-  const weakRow = [...scoredRows].sort((a, b) => a.hookScore + a.valueScore + a.fanScore - (b.hookScore + b.valueScore + b.fanScore))[0];
+  const bestRow = [...scoredRows].sort((a, b) => {
+    const scoreA = a.valueScore + a.fanScore + a.hookScore * 0.25;
+    const scoreB = b.valueScore + b.fanScore + b.hookScore * 0.25;
+    return scoreB - scoreA;
+  })[0];
+  const weakCandidates = [...scoredRows].sort((a, b) => {
+    const scoreA = a.hookScore + a.valueScore + a.fanScore;
+    const scoreB = b.hookScore + b.valueScore + b.fanScore;
+    return scoreA - scoreB;
+  });
+  const weakRow =
+    scoredRows.length > 1 ? weakCandidates.find((row) => row.topic !== bestRow.topic) ?? weakCandidates[0] : null;
   const repeatWatchRows = scoredRows.filter((row) => row.views > row.reach);
   const topCommentary = extractCommonKeywords(scoredRows.map((row) => row.commentary).filter(Boolean));
   const roleSummary = summarizeRoles(scoredRows);
@@ -111,7 +132,7 @@ function renderPeriodicReport(kind, rows, startDate, endDate) {
     `### ${kind === "weekly" ? "주간" : "월간"} 릴스 리포트`,
     "",
     `기간: ${formatDate(startDate)} ~ ${formatDate(endDate)}`,
-    `업로드 수: ${rows.length}개`,
+    `업로드 수: ${consolidatedRows.length}개`,
     `평균 조회수: ${formatNumber(averageViews)}`,
     `평균 후킹 점수: ${formatOne(averageHook)}점`,
     `평균 가치 점수: ${formatOne(averageValue)}점`,
@@ -134,7 +155,9 @@ function renderPeriodicReport(kind, rows, startDate, endDate) {
     `- ${bestRow.topic}: 조회수 ${formatNumber(bestRow.views)}, 가치 ${formatOne(bestRow.valueScore)}점, 팬 전환 ${formatOne(bestRow.fanScore)}점`,
     "",
     "**가장 아쉬운 영상**",
-    `- ${weakRow.topic}: 후킹 ${formatOne(weakRow.hookScore)}점, 가치 ${formatOne(weakRow.valueScore)}점, 팬 전환 ${formatOne(weakRow.fanScore)}점`,
+    weakRow
+      ? `- ${weakRow.topic}: 후킹 ${formatOne(weakRow.hookScore)}점, 가치 ${formatOne(weakRow.valueScore)}점, 팬 전환 ${formatOne(weakRow.fanScore)}점`
+      : "- 이번 기간에는 1개 영상만 있어 비교형 워스트 선정은 생략합니다.",
     "",
     "**패턴 메모**",
     repeatWatchRows.length > 0
@@ -143,6 +166,9 @@ function renderPeriodicReport(kind, rows, startDate, endDate) {
     topCommentary
       ? `- 코멘트 반복 키워드: ${topCommentary}`
       : "- 코멘트 반복 키워드는 아직 적습니다.",
+    summarizeText(scoredRows.map((row) => row.update_trend))
+      ? `- 업데이트 추이 메모: ${summarizeText(scoredRows.map((row) => row.update_trend))}`
+      : "- 업데이트 추이 메모는 아직 적습니다.",
     topInsights
       ? `- 반복 인사이트: ${topInsights}`
       : "- 반복 인사이트 데이터는 아직 적습니다.",
@@ -156,6 +182,81 @@ function renderPeriodicReport(kind, rows, startDate, endDate) {
   ]
     .filter(Boolean)
     .join("\n");
+}
+
+function consolidateRows(rows) {
+  const groups = new Map();
+
+  for (const row of rows) {
+    const key = buildRowKey(row);
+    const existing = groups.get(key) ?? [];
+    existing.push(row);
+    groups.set(key, existing);
+  }
+
+  return [...groups.values()].map((group) => mergeRowGroup(group));
+}
+
+function buildRowKey(row) {
+  return [
+    row.upload_date || row.uploadDate || "",
+    row.topic || "",
+    row.hook || "",
+    row.category || ""
+  ].join("::");
+}
+
+function mergeRowGroup(group) {
+  const sorted = [...group].sort((a, b) =>
+    String(a.submitted_at || a.submittedAt || "").localeCompare(String(b.submitted_at || b.submittedAt || ""))
+  );
+  const latest = sorted[sorted.length - 1] ?? {};
+
+  return {
+    ...latest,
+    commentary: joinUnique(sorted.map((row) => row.commentary)),
+    key_insight: joinUnique(sorted.map((row) => row.key_insight || row.keyInsight)),
+    recommended_action: joinUnique(sorted.map((row) => row.recommended_action || row.recommendedAction)),
+    commentary_interpretation: joinUnique(
+      sorted.map((row) => row.commentary_interpretation || row.commentaryInterpretation)
+    ),
+    comparison_note: joinUnique(sorted.map((row) => row.comparison_note || row.comparisonNote)),
+    update_count: String(sorted.length),
+    update_trend: buildUpdateTrend(sorted)
+  };
+}
+
+function joinUnique(values) {
+  const unique = [...new Set(values.map((value) => String(value || "").trim()).filter(Boolean))];
+  return unique.join(" / ");
+}
+
+function buildUpdateTrend(rows) {
+  if (rows.length <= 1) {
+    return "";
+  }
+
+  const first = rows[0];
+  const last = rows[rows.length - 1];
+  const likeDiff = toNumber(last.likes) - toNumber(first.likes);
+  const commentDiff = toNumber(last.comments) - toNumber(first.comments);
+  const shareDiff = toNumber(last.shares) - toNumber(first.shares);
+  const saveDiff = toNumber(last.saves) - toNumber(first.saves);
+  const followDiff = toNumber(last.follows) - toNumber(first.follows);
+
+  const changes = [
+    likeDiff > 0 ? `좋아요 +${likeDiff}` : "",
+    commentDiff > 0 ? `댓글 +${commentDiff}` : "",
+    shareDiff > 0 ? `공유 +${shareDiff}` : "",
+    saveDiff > 0 ? `저장 +${saveDiff}` : "",
+    followDiff > 0 ? `팔로우 +${followDiff}` : ""
+  ].filter(Boolean);
+
+  if (changes.length === 0) {
+    return "";
+  }
+
+  return `업데이트 추이: ${changes.join(", ")}`;
 }
 
 function buildActions(rows, metricDiagnosis) {
@@ -256,7 +357,7 @@ function computeScores(row) {
   const follows = toNumber(row.follows);
   const likes = toNumber(row.likes);
   const comments = toNumber(row.comments);
-  const skipRate = normalizeSkipRate(row.skipRate);
+  const skipRate = normalizeSkipRate(row.skip_rate || row.skipRate);
 
   const hookScore = clampScore(100 - skipRate);
   const valueRaw = safeDivide(saves + shares, views) * 100;

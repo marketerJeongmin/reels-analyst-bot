@@ -299,7 +299,7 @@ function buildCommentaryContext(commentary) {
 }
 
 function computeMetrics(submission) {
-  const skipRate = toNumber(submission.skipRate);
+  const skipRate = normalizeSkipRate(submission.skipRate);
   const views = toNumber(submission.views);
   const saves = toNumber(submission.saves);
   const shares = toNumber(submission.shares);
@@ -331,14 +331,28 @@ function normalizeRole(role, metrics) {
     return role;
   }
 
-  const candidates = [
-    { role: "조회수형", score: metrics.viewRate },
-    { role: "팔로우 전환형", score: metrics.fanScore },
-    { role: "저장형", score: metrics.valueScore },
-    { role: "댓글형", score: metrics.commentRate * 100 }
-  ].sort((a, b) => b.score - a.score);
+  if (metrics.commentRate >= 0.5) {
+    return "댓글형";
+  }
 
-  return candidates[0]?.role || "조회수형";
+  if (metrics.fanScore >= 80 && metrics.fanScore >= metrics.valueScore + 10) {
+    return "팔로우 전환형";
+  }
+
+  if (metrics.valueScore >= 55 && metrics.valueScore >= metrics.fanScore) {
+    return "저장형";
+  }
+
+  if (metrics.viewRate >= 110 || metrics.hookScore >= 65) {
+    return "조회수형";
+  }
+
+  return metrics.fanScore >= metrics.valueScore ? "팔로우 전환형" : "저장형";
+}
+
+function normalizeSkipRate(value) {
+  const raw = toNumber(value);
+  return raw > 1 ? raw : raw * 100;
 }
 
 function defaultHookLabel(score) {

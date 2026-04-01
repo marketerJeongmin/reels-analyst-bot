@@ -162,9 +162,32 @@ export async function getSubmissionRows() {
 
   const [header = [], ...rows] = values;
 
-  return rows.map((row) =>
-    Object.fromEntries(header.map((column, index) => [column, row[index] ?? ""]))
-  );
+  return rows.map((row, index) => ({
+    ...Object.fromEntries(header.map((column, columnIndex) => [column, row[columnIndex] ?? ""])),
+    _rowNumber: index + 2
+  }));
+}
+
+export async function updateSubmissionAnalysisFields(rowNumber, fields) {
+  const sheets = getSheetsClient();
+  const spreadsheetId = process.env.GOOGLE_SHEET_ID;
+
+  await sheets.spreadsheets.values.update({
+    spreadsheetId,
+    range: `${SHEET_NAME}!R${rowNumber}:V${rowNumber}`,
+    valueInputOption: "USER_ENTERED",
+    requestBody: {
+      values: [
+        [
+          fields.contentRole ?? "",
+          fields.keyInsight ?? "",
+          fields.recommendedAction ?? "",
+          fields.commentaryInterpretation ?? "",
+          fields.comparisonNote ?? ""
+        ]
+      ]
+    }
+  });
 }
 
 export async function hasReportBeenSent(reportType, reportKey) {
