@@ -66,7 +66,7 @@ client.once(Events.ClientReady, async (readyClient) => {
     hasSent: hasReportBeenSent,
     markSent: markReportSent,
     outputChannelId: process.env.DISCORD_REPORT_CHANNEL_ID,
-    mentionId: process.env.DISCORD_REPORT_MENTION_ID
+    mentionId: DEFAULT_MENTION_ID
   });
   console.log(`Logged in as ${readyClient.user.tag}`);
 });
@@ -242,14 +242,22 @@ async function handleModalSubmit(interaction) {
       flags: MessageFlags.Ephemeral
     });
 
+    const historicalRows = await getSubmissionRows();
+    const analysis = await analyzeSubmission(submission, historicalRows);
+
     await appendSubmissionRow({
-      submission,
+      submission: {
+        ...submission,
+        contentRole: analysis.contentRole,
+        keyInsight: analysis.keyInsight,
+        recommendedAction: analysis.recommendedAction,
+        commentaryInterpretation: analysis.commentaryInterpretation,
+        comparisonNote: analysis.comparisonNote
+      },
       discordUser: interaction.user.username,
       interactionId: interaction.id,
       submittedAt: new Date().toISOString()
     });
-
-    const analysis = await analyzeSubmission(submission);
     const outputChannel = await client.channels.fetch(process.env.DISCORD_OUTPUT_CHANNEL_ID);
 
     if (!outputChannel || outputChannel.type !== ChannelType.GuildText) {
@@ -263,7 +271,7 @@ async function handleModalSubmit(interaction) {
       `분류: ${submission.category}`,
       `후킹: ${submission.hook}`,
       "",
-      analysis
+      analysis.report
     ].join("\n");
 
     await outputChannel.send(prefixMention(DEFAULT_MENTION_ID, summary));

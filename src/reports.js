@@ -89,6 +89,14 @@ function renderPeriodicReport(kind, rows, startDate, endDate) {
   const weakRow = [...scoredRows].sort((a, b) => a.hookScore + a.valueScore + a.fanScore - (b.hookScore + b.valueScore + b.fanScore))[0];
   const repeatWatchRows = scoredRows.filter((row) => row.views > row.reach);
   const topCommentary = extractCommonKeywords(scoredRows.map((row) => row.commentary).filter(Boolean));
+  const roleSummary = summarizeRoles(scoredRows);
+  const topInsights = summarizeText(scoredRows.map((row) => row.key_insight || row.keyInsight));
+  const repeatedActions = summarizeText(
+    scoredRows.map((row) => row.recommended_action || row.recommendedAction)
+  );
+  const commentaryPatterns = summarizeText(
+    scoredRows.map((row) => row.commentary_interpretation || row.commentaryInterpretation)
+  );
 
   const metricDiagnosis = buildMetricDiagnosis({
     averageViewRate,
@@ -116,6 +124,9 @@ function renderPeriodicReport(kind, rows, startDate, endDate) {
     `- 공유: ${metricDiagnosis.shares}`,
     `- 저장: ${metricDiagnosis.saves}`,
     "",
+    "**영상 역할 패턴**",
+    roleSummary,
+    "",
     "**분류별 성과**",
     categoryLines || "- 분류 데이터 없음",
     "",
@@ -132,10 +143,19 @@ function renderPeriodicReport(kind, rows, startDate, endDate) {
     topCommentary
       ? `- 코멘트 반복 키워드: ${topCommentary}`
       : "- 코멘트 반복 키워드는 아직 적습니다.",
+    topInsights
+      ? `- 반복 인사이트: ${topInsights}`
+      : "- 반복 인사이트 데이터는 아직 적습니다.",
+    commentaryPatterns
+      ? `- 코멘트 해석 패턴: ${commentaryPatterns}`
+      : "- 코멘트 해석 패턴은 아직 적습니다.",
     "",
     kind === "weekly" ? "**다음 주 액션**" : "**다음 달 전략**",
-    ...actions.map((action) => `- ${action}`)
-  ].join("\n");
+    ...actions.map((action) => `- ${action}`),
+    repeatedActions ? `- 반복 추천 액션: ${repeatedActions}` : ""
+  ]
+    .filter(Boolean)
+    .join("\n");
 }
 
 function buildActions(rows, metricDiagnosis) {
@@ -424,4 +444,38 @@ function extractCommonKeywords(comments) {
     .slice(0, 3)
     .map(([word]) => word)
     .join(", ");
+}
+
+function summarizeRoles(rows) {
+  const counts = rows.reduce((map, row) => {
+    const role = row.content_role || row.contentRole || "미분류";
+    map.set(role, (map.get(role) ?? 0) + 1);
+    return map;
+  }, new Map());
+
+  return [...counts.entries()]
+    .sort((a, b) => b[1] - a[1])
+    .map(([role, count]) => `- ${role}: ${count}개`)
+    .join("\n");
+}
+
+function summarizeText(values) {
+  const cleaned = values
+    .map((value) => String(value || "").trim())
+    .filter(Boolean);
+
+  if (cleaned.length === 0) {
+    return "";
+  }
+
+  const counts = new Map();
+  for (const value of cleaned) {
+    counts.set(value, (counts.get(value) ?? 0) + 1);
+  }
+
+  return [...counts.entries()]
+    .sort((a, b) => b[1] - a[1])
+    .slice(0, 2)
+    .map(([value]) => value)
+    .join(" / ");
 }

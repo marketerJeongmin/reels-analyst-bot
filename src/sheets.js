@@ -19,7 +19,12 @@ const HEADER_ROW = [
   "skip_rate",
   "average_watch_time",
   "follows",
-  "commentary"
+  "commentary",
+  "content_role",
+  "key_insight",
+  "recommended_action",
+  "commentary_interpretation",
+  "comparison_note"
 ];
 const REPORT_LOG_HEADER_ROW = ["report_type", "report_key", "sent_at"];
 
@@ -64,22 +69,25 @@ export async function ensureSheetHeader() {
     (
       await sheets.spreadsheets.values.get({
         spreadsheetId,
-        range: `${SHEET_NAME}!A1:Q1`
+        range: `${SHEET_NAME}!A1:V1`
       })
     ).data.values ?? [];
 
-  if (currentValues.length > 0) {
-    return;
-  }
+  const currentHeader = currentValues[0] ?? [];
+  const headerMatches =
+    currentHeader.length === HEADER_ROW.length &&
+    HEADER_ROW.every((column, index) => currentHeader[index] === column);
 
-  await sheets.spreadsheets.values.update({
-    spreadsheetId,
-    range: `${SHEET_NAME}!A1:Q1`,
-    valueInputOption: "RAW",
-    requestBody: {
-      values: [HEADER_ROW]
-    }
-  });
+  if (!headerMatches) {
+    await sheets.spreadsheets.values.update({
+      spreadsheetId,
+      range: `${SHEET_NAME}!A1:V1`,
+      valueInputOption: "RAW",
+      requestBody: {
+        values: [HEADER_ROW]
+      }
+    });
+  }
 
   const reportLogValues =
     (
@@ -107,7 +115,7 @@ export async function appendSubmissionRow({ submission, discordUser, interaction
 
   await sheets.spreadsheets.values.append({
     spreadsheetId,
-    range: `${SHEET_NAME}!A:Q`,
+    range: `${SHEET_NAME}!A:V`,
     valueInputOption: "USER_ENTERED",
     insertDataOption: "INSERT_ROWS",
     requestBody: {
@@ -129,7 +137,12 @@ export async function appendSubmissionRow({ submission, discordUser, interaction
           submission.skipRate ?? "",
           submission.averageWatchTime ?? "",
           submission.follows ?? "",
-          submission.commentary ?? ""
+          submission.commentary ?? "",
+          submission.contentRole ?? "",
+          submission.keyInsight ?? "",
+          submission.recommendedAction ?? "",
+          submission.commentaryInterpretation ?? "",
+          submission.comparisonNote ?? ""
         ]
       ]
     }
@@ -143,7 +156,7 @@ export async function getSubmissionRows() {
     (
       await sheets.spreadsheets.values.get({
         spreadsheetId,
-        range: `${SHEET_NAME}!A:Q`
+        range: `${SHEET_NAME}!A:V`
       })
     ).data.values ?? [];
 

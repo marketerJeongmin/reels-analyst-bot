@@ -11,86 +11,84 @@ const client = new OpenAI({
   apiKey: process.env.OPENAI_API_KEY
 });
 
-export async function analyzeSubmission(submission) {
+export async function analyzeSubmission(submission, historicalRows = []) {
   const model = process.env.OPENAI_MODEL || "gpt-4.1-mini";
-  const skipRate = toNumber(submission.skipRate);
-  const views = toNumber(submission.views);
-  const saves = toNumber(submission.saves);
-  const shares = toNumber(submission.shares);
-  const reach = toNumber(submission.reach);
-  const follows = toNumber(submission.follows);
-  const likes = toNumber(submission.likes);
-  const comments = toNumber(submission.comments);
+  const metrics = computeMetrics(submission);
+  const comparisonContext = buildComparisonContext(submission, historicalRows);
+  const commentaryContext = buildCommentaryContext(submission.commentary);
 
-  const hookScore = clampScore(100 - skipRate);
-  const valueRaw = safeDivide(saves + shares, views) * 100;
-  const fanRaw = safeDivide(follows, reach) * 1000;
-  const valueScore = normalizeToHundred(valueRaw, 2);
-  const fanScore = normalizeToHundred(fanRaw, FAN_SCORE_BENCHMARK);
-  const viewRate = safeDivide(views, reach) * 100;
-  const likeRate = safeDivide(likes, reach) * 100;
-  const commentRate = safeDivide(comments, reach) * 100;
-  const shareRate = safeDivide(shares, views) * 100;
-  const saveRate = safeDivide(saves, views) * 100;
+  const draft = await createDraftAnalysis({
+    model,
+    submission,
+    metrics,
+    comparisonContext,
+    commentaryContext
+  });
 
+  const reviewed = await reviewDraftAnalysis({
+    model,
+    submission,
+    metrics,
+    draft,
+    comparisonContext,
+    commentaryContext
+  });
+
+  const result = normalizeAnalysis(reviewed, metrics);
+
+  return {
+    ...result,
+    report: renderReport(result, metrics),
+    metrics
+  };
+}
+
+async function createDraftAnalysis({ model, submission, metrics, comparisonContext, commentaryContext }) {
   const prompt = `
 너는 인스타그램 정보형 숏폼 콘텐츠 분석가야.
 계정 주제는 "내 집 마련", "서울 집 사기", "부동산 현실 조언"이다.
 이 봇은 디자이너의 감각과 데이터의 이성 사이의 균형을 찾기 위해 설계되었다.
 
-답변 원칙:
-- 짧고 실무적으로 쓴다.
-- 후킹, 저장/공유 가치, 팬 전환, 둥지님 메모를 중심으로 본다.
-- 무의미한 위로보다 바로 다음 액션을 준다.
-- 출력은 한국어로 한다.
-- 점수에 맞춰 냉정하지만 응원하는 톤으로 말한다.
-- 개별 영상 리포트에서는 다음 후킹/다음 주제 목록을 길게 주지 않는다.
-- 지금 당장 바꿀 한 가지를 가장 중요하게 제안한다.
-- 세 점수는 모두 100점 만점 기준으로 비교 가능하게 해석한다.
-- 점수는 그대로 두고, 조회수/좋아요/댓글/공유/저장 지표가 낮을 때의 의미를 반영해 다음 액션을 제안한다.
+해야 할 일:
+- 아래 데이터를 보고 개별 릴스 분석 초안을 만든다.
+- 후킹/가치/팬전환 3점수는 그대로 해석한다.
+- 조회수/좋아요/댓글/공유/저장이 낮을 때의 의미를 참고해 원인을 해석한다.
+- 영상의 역할을 하나로 분류한다. 역할 후보는 "조회수형", "팔로우 전환형", "저장형", "댓글형" 중 하나다.
+- 내 코멘트를 숫자와 엮어서 해석한다.
+- 유사 영상 대비 비교 메모가 가능하면 한 줄로 만든다.
+- 액션은 추상적으로 쓰지 말고, 바로 다음 영상에서 바꿀 장면/문장/구조 수준으로 구체적으로 쓴다.
 
-아래 형식으로만 답해줘.
-### 🐣 [Dungji] 릴스 성과 리포트
-**"한 줄 총평"**
+출력 형식:
+반드시 JSON 객체만 출력한다. 마크다운 금지.
+키는 아래와 정확히 같게 써라.
+{
+  "headline": string,
+  "hookLabel": string,
+  "valueLabel": string,
+  "fanLabel": string,
+  "contentRole": "조회수형" | "팔로우 전환형" | "저장형" | "댓글형",
+  "keyInsight": string,
+  "recommendedAction": string,
+  "analysisLine": string,
+  "memoLine": string,
+  "commentaryInterpretation": string,
+  "comparisonNote": string
+}
 
-- 🎯 후킹: {점수}점 ({짧은 평가})
-- 💎 가치: {점수}점 ({짧은 평가})
-- 👤 팬 전환: {점수}점 ({짧은 평가})
-
----
-💡 둥지의 추천:
-1. Action: 바로 다음 영상에서 할 행동 1개
-2. Analysis: 숫자 해석 1개
-3. Memo: 내 코멘트와 연결한 피드백 1개
+지표 해석 기준:
+- 조회수 낮음: 관심 부족, 표지/썸네일 문제, 초반 3초 문제 가능성
+- 좋아요 낮음: 공감 부족, "내 얘기다" 느낌 부족, 감성 자극 부족 가능성
+- 댓글 낮음: 소통 불능, 참여 유도 부족, 질문 설계 부족 가능성
+- 공유 낮음: 자극/정보 부족, 남에게 보내기 애매한 콘텐츠일 가능성
+- 저장 낮음: 다시 볼 필요 없음, 가치 부족, 휘발성 강한 콘텐츠일 가능성
 
 등급 기준:
-- 후킹 점수 80점 이상: "완벽한 도입부! 지금의 자막 배치와 타이밍을 유지하세요."
-- 후킹 점수 60점 미만: "문전박대 주의! 첫 화면의 비주얼이나 자막 문구를 더 자극적으로 바꿔보세요."
-- 가치 점수는 저장+공유 비율 2%를 100점 기준으로 정규화한 점수다.
-- 가치 점수 80점 이상: "알짜배기 콘텐츠! 사람들이 이 정보를 소중하게 여기고 있습니다."
-- 가치 점수 25점 미만: "알맹이 부족. 시청자가 나중에 또 봐야지 할만한 팁을 한 가지 더 넣어보세요."
-- 팬 전환 점수는 팔로우/도달 비율의 per-1000 값 ${FAN_SCORE_BENCHMARK}를 100점 기준으로 정규화한 점수다.
-- 팬 전환 점수 80점 이상: "슈퍼 루키! 둥지님의 브랜딩이 시청자에게 먹히고 있습니다."
-- 팬 전환 점수 35점 미만: "익명 크리에이터 주의. 영상 마지막에 둥지님만의 색깔을 더 드러내 보세요."
-
-추가 해석 규칙:
-- 조회수 > 도달 계정 수 이면 "반복 시청이 일어나는 정보성 레이아웃입니다. 이 형식을 템플릿화하세요!"를 적절히 반영한다.
-- 평균 시청 시간이 아쉬운데 조회수가 낮다면, 편집 효율 관점에서 영상 길이를 몇 초 줄일지 구체적으로 제안한다.
-- 내 코멘트에서 핵심 키워드를 뽑아 다음 액션에 반영한다.
-- 후킹/주제 추천은 주간 분석에서 하는 게 더 적절하다는 관점을 유지한다.
-- 조회수 해석:
-  - 낮으면 관심 부족, 표지/썸네일 문제, 초반 3초 문제로 본다.
-- 좋아요 해석:
-  - 낮으면 공감 부족, "내 얘기다" 느낌 부족, 감성 터치 부족으로 본다.
-- 댓글 해석:
-  - 낮으면 소통 유도/참여 설계 부족으로 본다.
-  - 예뻐요, 좋아요 같은 단순 칭찬만 달리는 패턴이면 진짜 대화가 열리지 않은 상태로 본다.
-- 공유 해석:
-  - 낮으면 자극이나 정보가 부족하고, "이거 너 얘기 아님?" 하고 남에게 보내기 애매한 콘텐츠로 본다.
-- 저장 해석:
-  - 낮으면 다시 볼 필요가 없는 콘텐츠, 가치 부족, 휘발성 강한 콘텐츠로 본다.
-- Action은 가장 약한 지표의 원인을 먼저 해결하는 방향으로 쓴다.
-- Analysis는 세 점수와 세부 지표가 어떻게 연결되는지 설명한다.
+- 후킹 80점 이상: 도입 강함
+- 후킹 60점 미만: 초반 3초 보강 필요
+- 가치 80점 이상: 알짜배기 콘텐츠
+- 가치 25점 미만: 알맹이 부족
+- 팬전환 80점 이상: 브랜딩 강함
+- 팬전환 35점 미만: 계정 색이 약함
 
 데이터:
 - 업로드 날짜: ${submission.uploadDate ?? ""}
@@ -109,18 +107,18 @@ export async function analyzeSubmission(submission) {
 - 내 코멘트: ${submission.commentary ?? ""}
 
 미리 계산된 점수:
-- 후킹 점수: ${formatScore(hookScore)}
-- 가치 점수: ${formatScore(valueScore)}
-- 팬 전환 점수: ${formatScore(fanScore)}
+- 후킹 점수: ${formatScore(metrics.hookScore)}
+- 가치 점수: ${formatScore(metrics.valueScore)}
+- 팬 전환 점수: ${formatScore(metrics.fanScore)}
 
 참고 raw 값:
-- 가치 raw: ${formatScore(valueRaw)}%
-- 팬 전환 raw: ${formatScore(fanRaw)} per 1000
-- 조회수/도달 비율: ${formatScore(viewRate)}%
-- 좋아요/도달 비율: ${formatScore(likeRate)}%
-- 댓글/도달 비율: ${formatScore(commentRate)}%
-- 공유/조회수 비율: ${formatScore(shareRate)}%
-- 저장/조회수 비율: ${formatScore(saveRate)}%
+- 가치 raw: ${formatScore(metrics.valueRaw)}%
+- 팬 전환 raw: ${formatScore(metrics.fanRaw)} per 1000
+- 조회수/도달 비율: ${formatScore(metrics.viewRate)}%
+- 좋아요/도달 비율: ${formatScore(metrics.likeRate)}%
+- 댓글/도달 비율: ${formatScore(metrics.commentRate)}%
+- 공유/조회수 비율: ${formatScore(metrics.shareRate)}%
+- 저장/조회수 비율: ${formatScore(metrics.saveRate)}%
 
 저조 지표 참고 기준:
 - 조회수/도달 비율 ${LOW_VIEW_RATE_BENCHMARK}% 미만이면 관심/초반 3초 이슈 가능성
@@ -128,14 +126,249 @@ export async function analyzeSubmission(submission) {
 - 댓글/도달 비율 ${LOW_COMMENT_RATE_BENCHMARK}% 미만이면 참여 유도 부족 가능성
 - 공유/조회수 비율 ${LOW_SHARE_RATE_BENCHMARK}% 미만이면 전파성 부족 가능성
 - 저장/조회수 비율 ${LOW_SAVE_RATE_BENCHMARK}% 미만이면 정보 가치 부족 가능성
+
+내 코멘트 핵심:
+${commentaryContext}
+
+유사 영상 비교 참고:
+${comparisonContext}
 `.trim();
 
+  return parseAnalysisJson(await runTextResponse(model, prompt));
+}
+
+async function reviewDraftAnalysis({
+  model,
+  submission,
+  metrics,
+  draft,
+  comparisonContext,
+  commentaryContext
+}) {
+  const prompt = `
+너는 숏폼 분석 리포트의 최종 검수자다.
+아래 초안을 체크리스트에 따라 검토하고, 부족한 부분을 보강한 최종안을 JSON으로 다시 써라.
+
+검수 체크리스트:
+- 후킹/가치/팬전환 3점수 해석이 숫자와 어긋나지 않는가
+- 영상 역할 분류가 현재 지표 조합과 맞는가
+- 내 코멘트가 표면적으로만 언급되지 않고 해석에 실제 반영되었는가
+- 유사 영상 비교 메모가 가능할 때 충분히 구체적인가
+- 추천 액션이 "후킹 강화"처럼 뭉뚱그려지지 않고 장면/문장/구조 수준으로 구체적인가
+- 맨날 같은 말처럼 들리지 않게 이 영상만의 의미를 한 줄이라도 말하는가
+
+반드시 JSON 객체만 출력한다.
+키는 그대로 유지:
+headline, hookLabel, valueLabel, fanLabel, contentRole, keyInsight, recommendedAction, analysisLine, memoLine, commentaryInterpretation, comparisonNote
+
+현재 영상 데이터:
+- 주제: ${submission.topic ?? ""}
+- 분류: ${submission.category ?? ""}
+- 후킹: ${submission.hook ?? ""}
+- 내 코멘트: ${submission.commentary ?? ""}
+
+점수:
+- 후킹: ${formatScore(metrics.hookScore)}
+- 가치: ${formatScore(metrics.valueScore)}
+- 팬전환: ${formatScore(metrics.fanScore)}
+
+세부 비율:
+- 조회수/도달: ${formatScore(metrics.viewRate)}%
+- 좋아요/도달: ${formatScore(metrics.likeRate)}%
+- 댓글/도달: ${formatScore(metrics.commentRate)}%
+- 공유/조회수: ${formatScore(metrics.shareRate)}%
+- 저장/조회수: ${formatScore(metrics.saveRate)}%
+
+내 코멘트 핵심:
+${commentaryContext}
+
+유사 영상 비교 참고:
+${comparisonContext}
+
+초안:
+${JSON.stringify(draft, null, 2)}
+`.trim();
+
+  return parseAnalysisJson(await runTextResponse(model, prompt), draft);
+}
+
+function normalizeAnalysis(analysis, metrics) {
+  return {
+    headline: analysis.headline || "숫자와 맥락을 같이 보면, 다음 액션이 보입니다.",
+    hookLabel: analysis.hookLabel || defaultHookLabel(metrics.hookScore),
+    valueLabel: analysis.valueLabel || defaultValueLabel(metrics.valueScore),
+    fanLabel: analysis.fanLabel || defaultFanLabel(metrics.fanScore),
+    contentRole: normalizeRole(analysis.contentRole, metrics),
+    keyInsight: analysis.keyInsight || "이 영상이 계정에서 어떤 역할을 하는지 더 분명히 봐야 합니다.",
+    recommendedAction:
+      analysis.recommendedAction || "다음 영상에서는 첫 장면과 첫 문장을 더 구체적으로 바꿔보세요.",
+    analysisLine: analysis.analysisLine || "세 점수와 세부 지표를 함께 보면 이 영상의 강약이 더 또렷해집니다.",
+    memoLine: analysis.memoLine || "내 코멘트와 숫자를 함께 보면 다음 수정 포인트가 더 선명해집니다.",
+    commentaryInterpretation:
+      analysis.commentaryInterpretation || "내 코멘트 해석이 충분치 않아 다음에 더 구체적으로 확인해볼 필요가 있습니다.",
+    comparisonNote: analysis.comparisonNote || "비교할 유사 영상 데이터가 아직 충분하지 않습니다."
+  };
+}
+
+function renderReport(analysis, metrics) {
+  return [
+    "### 🐣 [Dungji] 릴스 성과 리포트",
+    `**"${analysis.headline}"**`,
+    "",
+    `- 🎯 후킹: ${formatScore(metrics.hookScore)}점 (${analysis.hookLabel})`,
+    `- 💎 가치: ${formatScore(metrics.valueScore)}점 (${analysis.valueLabel})`,
+    `- 👤 팬 전환: ${formatScore(metrics.fanScore)}점 (${analysis.fanLabel})`,
+    `- 🧭 영상 역할: ${analysis.contentRole}`,
+    "",
+    "---",
+    "💡 둥지의 추천:",
+    `1. Action: ${analysis.recommendedAction}`,
+    `2. Analysis: ${analysis.analysisLine}`,
+    `3. Memo: ${analysis.memoLine}`,
+    `4. Context: ${analysis.comparisonNote}`
+  ].join("\n");
+}
+
+async function runTextResponse(model, input) {
   const response = await client.responses.create({
     model,
-    input: prompt
+    input
   });
 
   return response.output_text.trim();
+}
+
+function parseAnalysisJson(rawText, fallback = {}) {
+  const direct = tryJsonParse(rawText);
+  if (direct) {
+    return direct;
+  }
+
+  const match = rawText.match(/\{[\s\S]*\}/);
+  if (match) {
+    const extracted = tryJsonParse(match[0]);
+    if (extracted) {
+      return extracted;
+    }
+  }
+
+  return fallback;
+}
+
+function tryJsonParse(value) {
+  try {
+    return JSON.parse(value);
+  } catch {
+    return null;
+  }
+}
+
+function buildComparisonContext(submission, historicalRows) {
+  const sameCategoryRows = historicalRows
+    .filter((row) => (row.category || "") === (submission.category || ""))
+    .slice(-3);
+
+  if (sameCategoryRows.length === 0) {
+    return "비교 가능한 이전 유사 영상이 아직 충분하지 않습니다.";
+  }
+
+  const lines = sameCategoryRows.map((row) => {
+    const metrics = computeMetrics({
+      likes: row.likes,
+      comments: row.comments,
+      shares: row.shares,
+      saves: row.saves,
+      views: row.views,
+      reach: row.reach,
+      skipRate: row.skip_rate || row.skipRate,
+      follows: row.follows
+    });
+
+    return `- ${row.topic || "주제 없음"} | 후킹 ${formatScore(metrics.hookScore)} | 가치 ${formatScore(metrics.valueScore)} | 팬전환 ${formatScore(metrics.fanScore)} | 역할 ${row.content_role || "미분류"}`;
+  });
+
+  return lines.join("\n");
+}
+
+function buildCommentaryContext(commentary) {
+  if (!commentary) {
+    return "코멘트 없음";
+  }
+
+  return `원문 코멘트: ${commentary}`;
+}
+
+function computeMetrics(submission) {
+  const skipRate = toNumber(submission.skipRate);
+  const views = toNumber(submission.views);
+  const saves = toNumber(submission.saves);
+  const shares = toNumber(submission.shares);
+  const reach = toNumber(submission.reach);
+  const follows = toNumber(submission.follows);
+  const likes = toNumber(submission.likes);
+  const comments = toNumber(submission.comments);
+
+  const hookScore = clampScore(100 - skipRate);
+  const valueRaw = safeDivide(saves + shares, views) * 100;
+  const fanRaw = safeDivide(follows, reach) * 1000;
+
+  return {
+    hookScore,
+    valueRaw,
+    fanRaw,
+    valueScore: normalizeToHundred(valueRaw, 2),
+    fanScore: normalizeToHundred(fanRaw, FAN_SCORE_BENCHMARK),
+    viewRate: safeDivide(views, reach) * 100,
+    likeRate: safeDivide(likes, reach) * 100,
+    commentRate: safeDivide(comments, reach) * 100,
+    shareRate: safeDivide(shares, views) * 100,
+    saveRate: safeDivide(saves, views) * 100
+  };
+}
+
+function normalizeRole(role, metrics) {
+  if (["조회수형", "팔로우 전환형", "저장형", "댓글형"].includes(role)) {
+    return role;
+  }
+
+  const candidates = [
+    { role: "조회수형", score: metrics.viewRate },
+    { role: "팔로우 전환형", score: metrics.fanScore },
+    { role: "저장형", score: metrics.valueScore },
+    { role: "댓글형", score: metrics.commentRate * 100 }
+  ].sort((a, b) => b.score - a.score);
+
+  return candidates[0]?.role || "조회수형";
+}
+
+function defaultHookLabel(score) {
+  if (score >= 80) {
+    return "도입부가 강해요";
+  }
+  if (score < 60) {
+    return "초반 3초 보강이 필요해요";
+  }
+  return "관심은 끌었지만 더 세질 수 있어요";
+}
+
+function defaultValueLabel(score) {
+  if (score >= 80) {
+    return "알짜배기 콘텐츠예요";
+  }
+  if (score < 25) {
+    return "다시 볼 이유를 더 만들어야 해요";
+  }
+  return "가치는 있지만 더 날카롭게 만들 수 있어요";
+}
+
+function defaultFanLabel(score) {
+  if (score >= 80) {
+    return "팬 전환이 매우 좋아요";
+  }
+  if (score < 35) {
+    return "브랜딩을 더 전면에 세워야 해요";
+  }
+  return "브랜딩은 살아 있지만 더 키울 수 있어요";
 }
 
 function toNumber(value) {
