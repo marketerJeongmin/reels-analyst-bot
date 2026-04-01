@@ -339,6 +339,22 @@ function stripMetricLabel(value) {
 
 function normalizeUploadDate(value) {
   const trimmed = value.trim();
+  const rawDigits = trimmed.match(/\d+/g)?.join("") ?? "";
+
+  if (rawDigits.length === 8) {
+    const year = rawDigits.slice(0, 4);
+    const month = rawDigits.slice(4, 6);
+    const day = rawDigits.slice(6, 8);
+    return `${year}-${month}-${day}`;
+  }
+
+  if (rawDigits.length === 6) {
+    const year = `20${rawDigits.slice(0, 2)}`;
+    const month = rawDigits.slice(2, 4);
+    const day = rawDigits.slice(4, 6);
+    return `${year}-${month}-${day}`;
+  }
+
   const digits = trimmed.match(/\d+/g);
 
   if (!digits || digits.length < 3) {

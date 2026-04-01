@@ -190,6 +190,36 @@ export async function updateSubmissionAnalysisFields(rowNumber, fields) {
   });
 }
 
+export async function updateSubmissionBackfillFields(rowNumber, fields) {
+  const sheets = getSheetsClient();
+  const spreadsheetId = process.env.GOOGLE_SHEET_ID;
+
+  await sheets.spreadsheets.values.batchUpdate({
+    spreadsheetId,
+    requestBody: {
+      valueInputOption: "USER_ENTERED",
+      data: [
+        {
+          range: `${SHEET_NAME}!D${rowNumber}`,
+          values: [[fields.uploadDate ?? ""]]
+        },
+        {
+          range: `${SHEET_NAME}!R${rowNumber}:V${rowNumber}`,
+          values: [
+            [
+              fields.contentRole ?? "",
+              fields.keyInsight ?? "",
+              fields.recommendedAction ?? "",
+              fields.commentaryInterpretation ?? "",
+              fields.comparisonNote ?? ""
+            ]
+          ]
+        }
+      ]
+    }
+  });
+}
+
 export async function hasReportBeenSent(reportType, reportKey) {
   const sheets = getSheetsClient();
   const spreadsheetId = process.env.GOOGLE_SHEET_ID;
