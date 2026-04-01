@@ -10,7 +10,7 @@ export async function buildWeeklyReport(rows, now = new Date()) {
   const current = getZonedParts(now);
   const weekStart = startOfWeek(current);
   const filtered = rows.filter((row) => {
-    const date = parseUploadDate(row.uploadDate);
+    const date = parseUploadDate(getUploadDateValue(row));
     return date && compareDate(date, weekStart) >= 0 && compareDate(date, current) <= 0;
   });
 
@@ -26,7 +26,7 @@ export async function buildMonthlyReport(rows, now = new Date()) {
   const current = getZonedParts(now);
   const monthStart = { year: current.year, month: current.month, day: 1 };
   const filtered = rows.filter((row) => {
-    const date = parseUploadDate(row.uploadDate);
+    const date = parseUploadDate(getUploadDateValue(row));
     return date && compareDate(date, monthStart) >= 0 && compareDate(date, current) <= 0;
   });
 
@@ -254,6 +254,10 @@ function computeScores(row) {
     valueScore: normalizeToHundred(valueRaw, 2),
     fanScore: normalizeToHundred(fanRaw, FAN_SCORE_BENCHMARK)
   };
+}
+
+function getUploadDateValue(row) {
+  return row.upload_date || row.uploadDate || row.submitted_at || row.submittedAt || "";
 }
 
 function normalizeSkipRate(value) {
