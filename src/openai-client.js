@@ -53,10 +53,22 @@ async function createDraftAnalysis({ model, submission, metrics, comparisonConte
 - 아래 데이터를 보고 개별 릴스 분석 초안을 만든다.
 - 후킹/가치/팬전환 3점수는 그대로 해석한다.
 - 조회수/좋아요/댓글/공유/저장이 낮을 때의 의미를 참고해 원인을 해석한다.
+- 세부 지표 우선순위는 "공유 > 시청시간 > 저장 > 댓글 > 좋아요"로 본다.
+- 특히 공유가 높으면 전파성이 있는 콘텐츠로, 시청시간이 높으면 끝까지 보게 하는 구조로, 저장이 높으면 다시 볼 가치가 있는 콘텐츠로 우선 해석한다.
+- 해석은 반드시 논리적으로 일관되어야 한다. 강한 지표를 바로 뒤에서 부정하지 마라.
+- 높은 가치 점수나 높은 저장/공유/시청시간이 나오면, 먼저 "사람들이 가치 있다고 느꼈다"는 사실을 인정하고 그 가치가 어디서 왔는지 설명하라.
+- 가치가 높을 때는 "내용이 얕다", "알맹이가 없다", "깊이가 부족하다" 같은 표현을 금지한다. 대신 "깊이형이라기보다 기준 정리형/체크리스트형/캡션 보충형 가치로 작동했다"처럼 해석한다.
+- 팬전환이 높을 때는 "브랜딩이 약하다" 같은 표현을 금지한다. 강점은 강점으로 인정하고, 약점은 다른 축에서만 말하라.
+- 공유가 높을 때는 전파성이 있었다고 인정하고, 저장이 높을 때는 다시 볼 이유가 있었다고 인정하라.
+- 약점을 말할 때는 이미 높은 축을 부정하지 말고, 다른 축에서 부족한 점만 말하라. 예: "저장은 높았지만 댓글은 약했다", "팬전환은 강했지만 초반 후킹은 약했다".
 - 영상의 역할을 하나로 분류한다. 역할 후보는 "조회수형", "팔로우 전환형", "저장형", "댓글형" 중 하나다.
 - 역할은 단순 조회수보다 실제 반응이 강한 신호를 우선한다. 댓글이 강하면 댓글형, 팔로우가 강하면 팔로우 전환형, 저장/공유가 강하면 저장형, 나머지는 조회수형으로 본다.
 - 내 코멘트를 단순 언급하지 말고, 코멘트가 지적한 문제와 숫자가 일치하는지까지 해석한다.
 - 내 코멘트의 구체 표현을 최소 1개는 해석 근거로 사용하고, 맞는 부분과 어긋나는 부분이 있으면 같이 적는다.
+- 대본만 보고 "정보 밀도가 낮다" 같은 판단을 단정하지 마라. 저장이 높으면 사람들은 이미 다시 볼 가치가 있다고 느낀 것이다.
+- 저장이 높고 코멘트에서 내용 부족을 느꼈다면, "사람들은 캡션 보충이나 정리 구조까지 포함해 가치를 느꼈을 수 있다"처럼 해석한다.
+- 코멘트는 숫자를 뒤집는 근거가 아니라, 숫자가 왜 그렇게 나왔는지 보정하는 근거로 사용하라.
+- 사용자가 "왜 잘됐는지 모르겠다"라고 써도 저장/공유/시청시간이 높다면, "체감상은 얕게 느껴질 수 있지만 시청자는 정리 구조나 캡션 보충까지 포함해 가치를 느꼈다"처럼 해석하라.
 - 유사 영상 대비 비교 메모가 가능하면 한 줄로 만든다. 같은 분류보다 같은 시리즈/같은 흐름을 우선 비교한다.
 - 액션은 문구 예시를 길게 쓰지 말고, 바로 다음 영상에서 바꿀 구조만 말한다.
 - 액션은 첫 장면, 첫 자막, 순서, 비교표, CTA 같은 구조 단위로 쓴다.
@@ -140,6 +152,7 @@ async function createDraftAnalysis({ model, submission, metrics, comparisonConte
 - 댓글/도달 비율: ${formatScore(metrics.commentRate)}%
 - 공유/조회수 비율: ${formatScore(metrics.shareRate)}%
 - 저장/조회수 비율: ${formatScore(metrics.saveRate)}%
+- 평균시청시간(초): ${formatScore(metrics.averageWatchTimeSeconds)}
 
 저조 지표 참고 기준:
 - 조회수/도달 비율 ${LOW_VIEW_RATE_BENCHMARK}% 미만이면 관심/초반 3초 이슈 가능성
@@ -147,6 +160,7 @@ async function createDraftAnalysis({ model, submission, metrics, comparisonConte
 - 댓글/도달 비율 ${LOW_COMMENT_RATE_BENCHMARK}% 미만이면 참여 유도 부족 가능성
 - 공유/조회수 비율 ${LOW_SHARE_RATE_BENCHMARK}% 미만이면 전파성 부족 가능성
 - 저장/조회수 비율 ${LOW_SAVE_RATE_BENCHMARK}% 미만이면 정보 가치 부족 가능성
+- 평균시청시간이 높으면 후킹 이후 전개 구조는 먹힌 것으로 해석한다
 
 내 코멘트 핵심:
 ${commentaryContext}
@@ -172,9 +186,15 @@ async function reviewDraftAnalysis({
 
 검수 체크리스트:
 - 후킹/가치/팬전환 3점수 해석이 숫자와 어긋나지 않는가
+- 강한 지표를 약한 해석으로 스스로 부정하지 않는가
+- 높은 가치/저장/공유/시청시간이 있을 때, 그 강점을 먼저 인정하고 설명하는가
+- 가치가 높은데 "얕다/부족하다"처럼 정면으로 모순되는 표현을 쓰지 않았는가
+- 약점은 강점과 다른 축에서만 말하고 있는가
 - 영상 역할 분류가 현재 지표 조합과 맞는가
 - 내 코멘트가 표면적으로만 언급되지 않고 해석에 실제 반영되었는가
 - 내 코멘트가 지적한 문제와 숫자가 실제로 연결되어 있는가
+- 저장이 높거나 시청시간이 높다면, 내용을 일방적으로 약하다고 단정하지 않았는가
+- 공유 > 시청시간 > 저장 순으로 더 중요한 신호를 우선 읽었는가
 - 유사 영상 비교 메모가 가능할 때 충분히 구체적인가
 - 추천 액션이 "후킹 강화"처럼 뭉뚱그려지지 않고 장면/문장/구조/CTA 수준으로 구체적인가
 - 문구 예시를 길게 제시하지 않고 실제로 바꿀 구조만 말하는가
@@ -352,6 +372,7 @@ function computeMetrics(submission) {
   const views = toNumber(submission.views);
   const saves = toNumber(submission.saves);
   const shares = toNumber(submission.shares);
+  const averageWatchTimeSeconds = toNumber(submission.averageWatchTime);
   const reach = toNumber(submission.reach);
   const follows = toNumber(submission.follows);
   const likes = toNumber(submission.likes);
@@ -369,6 +390,7 @@ function computeMetrics(submission) {
     comments,
     saves,
     shares,
+    averageWatchTimeSeconds,
     hookScore,
     valueRaw,
     fanRaw,
