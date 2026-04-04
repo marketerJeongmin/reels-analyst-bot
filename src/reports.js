@@ -8,23 +8,14 @@ const LOW_SAVE_RATE_BENCHMARK = 0.4;
 
 export async function buildWeeklyReport(rows, now = new Date()) {
   const current = getZonedParts(now);
-  const weekStart = startOfWeek(current);
-  let filtered = rows.filter((row) => {
+  const periodStart = shiftDate(current, -6);
+  const filtered = rows.filter((row) => {
     const date = parseUploadDate(getUploadDateValue(row));
-    return date && compareDate(date, weekStart) >= 0 && compareDate(date, current) <= 0;
+    return date && compareDate(date, periodStart) >= 0 && compareDate(date, current) <= 0;
   });
-  let periodStart = weekStart;
-
-  if (filtered.length === 0) {
-    periodStart = shiftDate(current, -6);
-    filtered = rows.filter((row) => {
-      const date = parseUploadDate(getUploadDateValue(row));
-      return date && compareDate(date, periodStart) >= 0 && compareDate(date, current) <= 0;
-    });
-  }
 
   return {
-    reportKey: `${current.year}-W${getWeekKey(current)}`,
+    reportKey: `${formatDate(periodStart)}_${formatDate(current)}`,
     title: "주간 릴스 리포트",
     periodLabel: `${formatDate(periodStart)} ~ ${formatDate(current)}`,
     content: renderPeriodicReport("weekly", filtered, periodStart, current)
@@ -84,6 +75,7 @@ function renderPeriodicReport(kind, rows, startDate, endDate) {
   const averageShareRate = average(scoredRows.map((row) => row.shareRate));
   const averageSaveRate = average(scoredRows.map((row) => row.saveRate));
   const averageViewRate = average(scoredRows.map((row) => row.viewRate));
+  const averageWatchTime = average(scoredRows.map((row) => row.averageWatchTimeSeconds));
 
   const byCategory = groupBy(scoredRows, "category");
   const categoryLines = Object.entries(byCategory)
@@ -97,13 +89,33 @@ function renderPeriodicReport(kind, rows, startDate, endDate) {
     .join("\n");
 
   const bestRow = [...scoredRows].sort((a, b) => {
-    const scoreA = a.valueScore + a.fanScore + a.hookScore * 0.25;
-    const scoreB = b.valueScore + b.fanScore + b.hookScore * 0.25;
+    const scoreA =
+      a.fanScore +
+      a.shareRate * 40 +
+      a.averageWatchTimeSeconds * 2 +
+      a.saveRate * 20 +
+      a.hookScore * 0.2;
+    const scoreB =
+      b.fanScore +
+      b.shareRate * 40 +
+      b.averageWatchTimeSeconds * 2 +
+      b.saveRate * 20 +
+      b.hookScore * 0.2;
     return scoreB - scoreA;
   })[0];
   const weakCandidates = [...scoredRows].sort((a, b) => {
-    const scoreA = a.hookScore + a.valueScore + a.fanScore;
-    const scoreB = b.hookScore + b.valueScore + b.fanScore;
+    const scoreA =
+      a.shareRate * 40 +
+      a.averageWatchTimeSeconds * 2 +
+      a.saveRate * 20 +
+      a.hookScore * 0.2 +
+      a.fanScore * 0.5;
+    const scoreB =
+      b.shareRate * 40 +
+      b.averageWatchTimeSeconds * 2 +
+      b.saveRate * 20 +
+      b.hookScore * 0.2 +
+      b.fanScore * 0.5;
     return scoreA - scoreB;
   });
   const weakRow =
@@ -111,11 +123,12 @@ function renderPeriodicReport(kind, rows, startDate, endDate) {
   const repeatWatchRows = scoredRows.filter((row) => row.views > row.reach);
   const topCommentary = extractCommonKeywords(scoredRows.map((row) => row.commentary).filter(Boolean));
   const roleSummary = summarizeRoles(scoredRows);
+  const topicSummary = summarizeTopics(scoredRows);
   const topInsights = summarizeText(scoredRows.map((row) => row.key_insight || row.keyInsight), 1, 55);
   const repeatedActions = summarizeText(
     scoredRows.map((row) => row.recommended_action || row.recommendedAction),
     1,
-    55
+    80
   );
   const commentaryPatterns = summarizeText(
     scoredRows.map((row) => row.commentary_interpretation || row.commentaryInterpretation),
@@ -129,9 +142,13 @@ function renderPeriodicReport(kind, rows, startDate, endDate) {
     averageLikeRate,
     averageCommentRate,
     averageShareRate,
-    averageSaveRate
+    averageSaveRate,
+    averageWatchTime
   });
   const actions = buildActions(scoredRows, metricDiagnosis);
+  const trendTip = buildTrendTip(kind, metricDiagnosis);
+  const whyWorked = topInsights || buildWhyWorked(bestRow);
+  const whyWeak = buildWhyWeak(weakRow, metricDiagnosis);
 
   return [
     `### ${kind === "weekly" ? "주간" : "월간"} 릴스 리포트`,
@@ -142,6 +159,10 @@ function renderPeriodicReport(kind, rows, startDate, endDate) {
     `평균 후킹 점수: ${formatOne(averageHook)}점`,
     `평균 가치 점수: ${formatOne(averageValue)}점`,
     `평균 팬 전환 점수: ${formatOne(averageFan)}점`,
+    `평균 시청시간: ${formatOne(averageWatchTime)}초`,
+    "",
+    "**해당 기간 영상**",
+    topicSummary,
     "",
     "**지표별 진단**",
     `- 조회수: ${metricDiagnosis.views}`,
@@ -164,6 +185,12 @@ function renderPeriodicReport(kind, rows, startDate, endDate) {
       ? `- ${weakRow.topic}: 후킹 ${formatOne(weakRow.hookScore)}점, 가치 ${formatOne(weakRow.valueScore)}점, 팬 전환 ${formatOne(weakRow.fanScore)}점`
       : "- 이번 기간에는 1개 영상만 있어 비교형 워스트 선정은 생략합니다.",
     "",
+    "**왜 잘됐는지**",
+    `- ${whyWorked}`,
+    "",
+    "**왜 아쉬운지**",
+    `- ${whyWeak}`,
+    "",
     "**패턴 메모**",
     repeatWatchRows.length > 0
       ? `- 조회수 > 도달 계정 수 영상 ${repeatWatchRows.length}개: 반복 시청 가능성이 있는 레이아웃입니다.`
@@ -183,7 +210,10 @@ function renderPeriodicReport(kind, rows, startDate, endDate) {
     "",
     kind === "weekly" ? "**다음 주 액션**" : "**다음 달 전략**",
     ...actions.map((action) => `- ${action}`),
-    repeatedActions ? `- 반복 추천 액션: ${repeatedActions}` : ""
+    repeatedActions && repeatedActions.length <= 80 ? `- 반복 추천 액션: ${repeatedActions}` : "",
+    trendTip ? "" : "",
+    trendTip ? `**${kind === "weekly" ? "이번 주 추천 실험" : "다음 달 추천 실험"}**` : "",
+    trendTip ? `- ${trendTip}` : ""
   ]
     .filter(Boolean)
     .join("\n");
@@ -293,19 +323,25 @@ function buildActions(rows, metricDiagnosis) {
   }
 
   const lowestActionMap = {
+    shares:
+      "공유가 약하면 비교, 경고, '이거 너 얘기 아님?' 구조를 먼저 넣어 남에게 보내기 쉬운 문장으로 바꾸세요.",
+    watchTime:
+      "시청시간이 약하면 첫 장면에서 결론을 먼저 던지고, 중간에 비교표나 반전 컷을 넣어 끝까지 보게 만드세요.",
+    saves: "저장이 약하면 체크리스트, 3단계 정리, 비교표처럼 다시 볼 이유가 남는 구조로 바꾸세요.",
     views:
       "조회수가 약하면 제목·표지·첫 자막을 한 문장으로 묶고, 첫 장면에 결론이나 지역명을 먼저 보여주세요.",
     likes:
       "좋아요가 약하면 본문 앞에 '저도 처음엔 헷갈렸어요' 같은 공감 한 줄과 개인 경험 한 줄을 더하세요.",
     comments:
       "댓글이 약하면 마지막 질문을 선택형이나 찬반형으로 바꾸고, 댓글 보상 문구를 같이 넣어보세요.",
-    shares:
-      "공유가 약하면 비교/경고/전후 차이 같은 문장을 넣어 '이거 너 얘기 아님?' 감을 만들어보세요.",
-    saves: "저장이 약하면 체크리스트나 3단계 정리처럼 다시 볼 이유가 남는 구조로 바꿔보세요."
+    fallback:
+      "공유가 제일 중요하고, 그다음은 시청시간과 저장입니다. 이 순서로 구조를 다시 보세요."
   };
 
   if (lowestActionMap[metricDiagnosis.lowest]) {
     actions.push(lowestActionMap[metricDiagnosis.lowest]);
+  } else {
+    actions.push(lowestActionMap.fallback);
   }
 
   return actions.slice(0, 3);
@@ -332,33 +368,50 @@ function buildMetricDiagnosis(metrics) {
     saves:
       metrics.averageSaveRate < LOW_SAVE_RATE_BENCHMARK
         ? "재방문 가치가 약합니다."
-        : "재방문 가치는 유지됩니다."
+        : "재방문 가치는 유지됩니다.",
+    watchTime:
+      metrics.averageWatchTime < 6
+        ? "중간 이탈이 빨라 끝까지 보게 하는 구조가 약합니다."
+        : "시청 유지력은 유지되고 있습니다."
   };
 
   const candidates = [
     {
-      key: "views",
-      ratio: metrics.averageViewRate / LOW_VIEW_RATE_BENCHMARK
-    },
-    {
-      key: "likes",
-      ratio: metrics.averageLikeRate / LOW_LIKE_RATE_BENCHMARK
-    },
-    {
-      key: "comments",
-      ratio: metrics.averageCommentRate / LOW_COMMENT_RATE_BENCHMARK
-    },
-    {
       key: "shares",
-      ratio: metrics.averageShareRate / LOW_SHARE_RATE_BENCHMARK
+      ratio: metrics.averageShareRate / LOW_SHARE_RATE_BENCHMARK,
+      weight: 1.4
+    },
+    {
+      key: "watchTime",
+      ratio: metrics.averageWatchTime / 6,
+      weight: 1.2
     },
     {
       key: "saves",
-      ratio: metrics.averageSaveRate / LOW_SAVE_RATE_BENCHMARK
+      ratio: metrics.averageSaveRate / LOW_SAVE_RATE_BENCHMARK,
+      weight: 1.1
+    },
+    {
+      key: "views",
+      ratio: metrics.averageViewRate / LOW_VIEW_RATE_BENCHMARK,
+      weight: 1
+    },
+    {
+      key: "likes",
+      ratio: metrics.averageLikeRate / LOW_LIKE_RATE_BENCHMARK,
+      weight: 0.9
+    },
+    {
+      key: "comments",
+      ratio: metrics.averageCommentRate / LOW_COMMENT_RATE_BENCHMARK,
+      weight: 0.9
     }
-  ];
+  ].map((candidate) => ({
+    ...candidate,
+    weightedRatio: candidate.ratio / candidate.weight
+  }));
 
-  candidates.sort((a, b) => a.ratio - b.ratio);
+  candidates.sort((a, b) => a.weightedRatio - b.weightedRatio);
   diagnosis.lowest = candidates[0]?.key ?? "views";
   return diagnosis;
 }
@@ -371,6 +424,7 @@ function computeScores(row) {
   const follows = toNumber(row.follows);
   const likes = toNumber(row.likes);
   const comments = toNumber(row.comments);
+  const averageWatchTimeSeconds = toNumber(row.average_watch_time || row.averageWatchTime);
   const skipRate = normalizeSkipRate(row.skip_rate || row.skipRate);
 
   const hookScore = clampScore(100 - skipRate);
@@ -380,6 +434,7 @@ function computeScores(row) {
   return {
     views,
     reach,
+    averageWatchTimeSeconds,
     hookScore,
     likeRate: safeDivide(likes, reach) * 100,
     commentRate: safeDivide(comments, reach) * 100,
@@ -574,6 +629,15 @@ function summarizeRoles(rows) {
     .join("\n");
 }
 
+function summarizeTopics(rows) {
+  return rows
+    .map((row) => {
+      const role = row.content_role || row.contentRole || "미분류";
+      return `- ${row.topic || "주제 없음"} (${role})`;
+    })
+    .join("\n");
+}
+
 function summarizeText(values, limit = 1, maxLength = 90) {
   const cleaned = values
     .map((value) => normalizeSummaryText(value))
@@ -620,6 +684,56 @@ function shortenSummaryText(value, maxLength) {
   }
 
   return `${base.slice(0, Math.max(0, maxLength - 1)).trimEnd()}…`;
+}
+
+function buildWhyWorked(bestRow) {
+  if (!bestRow) {
+    return "이번 기간에는 강점이 뚜렷한 영상이 아직 적습니다.";
+  }
+
+  if (bestRow.shareRate >= LOW_SHARE_RATE_BENCHMARK) {
+    return "공유가 높아 남에게 보내기 쉬운 포맷으로 작동했습니다.";
+  }
+
+  if (bestRow.averageWatchTimeSeconds >= 10) {
+    return "시청시간이 길어 끝까지 보게 하는 구조가 먹혔습니다.";
+  }
+
+  if (bestRow.saveRate >= LOW_SAVE_RATE_BENCHMARK) {
+    return "저장이 높아 나중에 다시 볼 가치가 분명했습니다.";
+  }
+
+  return "팔로우 전환이나 반복 시청 등 계정 입구 역할을 해준 영상이었습니다.";
+}
+
+function buildWhyWeak(weakRow, metricDiagnosis) {
+  if (!weakRow) {
+    return "이번 기간에는 비교형 아쉬운 영상보다 전체 패턴을 보는 편이 더 유효합니다.";
+  }
+
+  const reasons = {
+    shares: "공유가 약해 남에게 보내고 싶은 포인트가 부족했습니다.",
+    watchTime: "시청시간이 약해 끝까지 보게 하는 전개가 아쉬웠습니다.",
+    saves: "저장이 약해 다시 볼 이유가 선명하지 않았습니다.",
+    views: "조회수 약세라 초반 관심 유입이 약했습니다.",
+    likes: "좋아요가 약해 공감 포인트가 덜 살아났습니다.",
+    comments: "댓글이 약해 대답하고 싶은 질문 설계가 부족했습니다."
+  };
+
+  return reasons[metricDiagnosis.lowest] || "지표 조합상 구조 보완이 필요한 영상이었습니다.";
+}
+
+function buildTrendTip(kind, metricDiagnosis) {
+  const tips = {
+    shares: "최근 릴스는 공유가 강한 영상이 더 멀리 퍼집니다. '이거 너 얘기 아님?' 같은 전달 포인트를 먼저 설계해보세요.",
+    watchTime: "최근엔 첫 1~2초보다 끝까지 보게 하는 전개도 중요합니다. 중간 반전 컷이나 비교표를 더 빨리 보여주세요.",
+    saves: "저장은 여전히 중요하지만, 단순 정보 나열보다 비교표·체크리스트처럼 다시 보기 쉬운 구조가 더 잘 남습니다.",
+    views: "최근 후킹은 질문만 던지기보다 숫자·지역명·결론을 첫 장면에서 먼저 보여줄 때 더 강하게 작동합니다.",
+    likes: "좋아요는 공감 신호입니다. 정보 앞에 감정 번역 한 줄을 넣어 '내 얘기다' 느낌을 먼저 만들어보세요.",
+    comments: "댓글은 열린 질문보다 선택형 질문이 더 잘 붙습니다. 찬반이나 둘 중 하나 고르게 바꿔보세요."
+  };
+
+  return tips[metricDiagnosis.lowest] || "";
 }
 
 function normalizeContentKey(value) {
