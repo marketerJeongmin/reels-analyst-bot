@@ -309,10 +309,10 @@ function parseMetricGroupA(rawValue) {
   }
 
   return {
-    likes: stripMetricLabel(parts[0]),
-    comments: stripMetricLabel(parts[1]),
-    shares: stripMetricLabel(parts[2]),
-    saves: stripMetricLabel(parts[3])
+    likes: normalizeMetricText(stripMetricLabel(parts[0])),
+    comments: normalizeMetricText(stripMetricLabel(parts[1])),
+    shares: normalizeMetricText(stripMetricLabel(parts[2])),
+    saves: normalizeMetricText(stripMetricLabel(parts[3]))
   };
 }
 
@@ -324,17 +324,57 @@ function parseMetricGroupB(rawValue) {
   }
 
   return {
-    views: stripMetricLabel(parts[0]),
-    reach: stripMetricLabel(parts[1]),
-    skipRate: stripMetricLabel(parts[2]),
-    averageWatchTime: stripMetricLabel(parts[3]),
-    follows: stripMetricLabel(parts[4])
+    views: normalizeMetricText(stripMetricLabel(parts[0])),
+    reach: normalizeMetricText(stripMetricLabel(parts[1])),
+    skipRate: normalizeMetricText(stripMetricLabel(parts[2])),
+    averageWatchTime: normalizeMetricText(stripMetricLabel(parts[3])),
+    follows: normalizeMetricText(stripMetricLabel(parts[4]))
   };
 }
 
 function stripMetricLabel(value) {
   const match = value.match(/^[^0-9\-]*([0-9][^]*)$/);
   return match ? match[1].trim() : value.trim();
+}
+
+function normalizeMetricText(value) {
+  const trimmed = String(value || "").trim();
+
+  if (!trimmed) {
+    return "";
+  }
+
+  const suffixMatch = trimmed.match(/[^0-9.,%초분시간일월년-]+$/);
+  const suffix = suffixMatch ? suffixMatch[0] : "";
+  const hasPercent = trimmed.includes("%");
+  const core = trimmed.replace(/[^0-9.,-]/g, "").replace(/,/g, "");
+  const normalizedCore = normalizeLooseNumber(core);
+
+  if (!normalizedCore) {
+    return trimmed;
+  }
+
+  return `${normalizedCore}${hasPercent ? "%" : ""}${suffix}`;
+}
+
+function normalizeLooseNumber(value) {
+  const raw = String(value || "").replace(/[^0-9.-]/g, "");
+
+  if (!raw) {
+    return "";
+  }
+
+  const negative = raw.startsWith("-") ? "-" : "";
+  const digits = raw.replace(/-/g, "");
+  const firstDot = digits.indexOf(".");
+
+  if (firstDot === -1) {
+    return `${negative}${digits}`;
+  }
+
+  const integerPart = digits.slice(0, firstDot).replace(/\./g, "");
+  const decimalPart = digits.slice(firstDot + 1).replace(/\./g, "");
+  return `${negative}${integerPart}.${decimalPart}`;
 }
 
 function normalizeUploadDate(value) {

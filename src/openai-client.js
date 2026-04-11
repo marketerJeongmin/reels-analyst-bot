@@ -266,12 +266,18 @@ function renderReport(analysis, metrics) {
     `- 👤 팬 전환: ${formatScore(metrics.fanScore)}점`,
     `  ${wrapText(analysis.fanLabel)}`,
     `- 🧭 영상 역할: ${analysis.contentRole}`,
-    "",
-    `- 잘된 이유: ${wrapText(analysis.keyInsight)}`,
+    ""
+  ];
+
+  if (hasMeaningfulPositiveSignal(metrics)) {
+    lines.push(`- 잘된 이유: ${wrapText(analysis.keyInsight)}`);
+  }
+
+  lines.push(
     `- 아쉬운 이유: ${wrapText(analysis.analysisLine)}`,
     `- 코멘트 검증: ${wrapText(analysis.commentaryInterpretation)}`,
     `- 다음에 바꿀 것: ${wrapText(analysis.recommendedAction)}`
-  ];
+  );
 
   if (analysis.comparisonNote) {
     lines.push(`- 비교 메모: ${wrapText(analysis.comparisonNote)}`);
@@ -280,6 +286,17 @@ function renderReport(analysis, metrics) {
   }
 
   return lines.join("\n");
+}
+
+function hasMeaningfulPositiveSignal(metrics) {
+  return (
+    metrics.hookScore >= 60 ||
+    metrics.valueScore >= 40 ||
+    metrics.fanScore >= 60 ||
+    metrics.shareRate >= LOW_SHARE_RATE_BENCHMARK ||
+    metrics.saveRate >= LOW_SAVE_RATE_BENCHMARK ||
+    metrics.averageWatchTimeSeconds >= 10
+  );
 }
 
 async function runTextResponse(model, input) {
@@ -554,8 +571,28 @@ function toNumber(value) {
     return 0;
   }
 
-  const normalized = String(value).replace(/,/g, "").replace(/[^0-9.]/g, "");
+  const normalized = normalizeLooseNumber(String(value).replace(/,/g, "").replace(/[^0-9.-]/g, ""));
   return Number(normalized) || 0;
+}
+
+function normalizeLooseNumber(value) {
+  const raw = String(value || "").trim();
+
+  if (!raw) {
+    return "";
+  }
+
+  const negative = raw.startsWith("-") ? "-" : "";
+  const digits = raw.replace(/-/g, "");
+  const firstDot = digits.indexOf(".");
+
+  if (firstDot === -1) {
+    return `${negative}${digits}`;
+  }
+
+  const integerPart = digits.slice(0, firstDot).replace(/\./g, "");
+  const decimalPart = digits.slice(firstDot + 1).replace(/\./g, "");
+  return `${negative}${integerPart}.${decimalPart}`;
 }
 
 function safeDivide(numerator, denominator) {

@@ -147,8 +147,23 @@ function renderPeriodicReport(kind, rows, startDate, endDate) {
   });
   const actions = buildActions(scoredRows, metricDiagnosis);
   const trendTip = buildTrendTip(kind, metricDiagnosis);
-  const whyWorked = topInsights || buildWhyWorked(bestRow);
+  const showWhyWorked = hasMeaningfulPositiveSignal(bestRow) || hasMeaningfulPeriodSignal({
+    averageHook,
+    averageValue,
+    averageFan,
+    averageShareRate,
+    averageSaveRate,
+    averageWatchTime
+  });
+  const whyWorked = showWhyWorked ? topInsights || buildWhyWorked(bestRow) : "";
   const whyWeak = buildWhyWeak(weakRow, metricDiagnosis);
+  const whyWorkedLines = showWhyWorked
+    ? [
+        "",
+        "**왜 잘됐는지**",
+        `- ${whyWorked}`
+      ]
+    : [];
 
   return [
     `### ${kind === "weekly" ? "주간" : "월간"} 릴스 리포트`,
@@ -184,9 +199,7 @@ function renderPeriodicReport(kind, rows, startDate, endDate) {
     weakRow
       ? `- ${weakRow.topic}: 후킹 ${formatOne(weakRow.hookScore)}점, 가치 ${formatOne(weakRow.valueScore)}점, 팬 전환 ${formatOne(weakRow.fanScore)}점`
       : "- 이번 기간에는 1개 영상만 있어 비교형 워스트 선정은 생략합니다.",
-    "",
-    "**왜 잘됐는지**",
-    `- ${whyWorked}`,
+    ...whyWorkedLines,
     "",
     "**왜 아쉬운지**",
     `- ${whyWeak}`,
@@ -460,8 +473,28 @@ function toNumber(value) {
     return 0;
   }
 
-  const normalized = String(value).replace(/,/g, "").replace(/[^0-9.]/g, "");
+  const normalized = normalizeLooseNumber(String(value).replace(/,/g, "").replace(/[^0-9.-]/g, ""));
   return Number(normalized) || 0;
+}
+
+function normalizeLooseNumber(value) {
+  const raw = String(value || "").trim();
+
+  if (!raw) {
+    return "";
+  }
+
+  const negative = raw.startsWith("-") ? "-" : "";
+  const digits = raw.replace(/-/g, "");
+  const firstDot = digits.indexOf(".");
+
+  if (firstDot === -1) {
+    return `${negative}${digits}`;
+  }
+
+  const integerPart = digits.slice(0, firstDot).replace(/\./g, "");
+  const decimalPart = digits.slice(firstDot + 1).replace(/\./g, "");
+  return `${negative}${integerPart}.${decimalPart}`;
 }
 
 function safeDivide(numerator, denominator) {
@@ -704,6 +737,32 @@ function buildWhyWorked(bestRow) {
   }
 
   return "팔로우 전환이나 반복 시청 등 계정 입구 역할을 해준 영상이었습니다.";
+}
+
+function hasMeaningfulPositiveSignal(row) {
+  if (!row) {
+    return false;
+  }
+
+  return (
+    row.hookScore >= 60 ||
+    row.valueScore >= 40 ||
+    row.fanScore >= 60 ||
+    row.shareRate >= LOW_SHARE_RATE_BENCHMARK ||
+    row.saveRate >= LOW_SAVE_RATE_BENCHMARK ||
+    row.averageWatchTimeSeconds >= 10
+  );
+}
+
+function hasMeaningfulPeriodSignal(metrics) {
+  return (
+    metrics.averageHook >= 60 ||
+    metrics.averageValue >= 40 ||
+    metrics.averageFan >= 60 ||
+    metrics.averageShareRate >= LOW_SHARE_RATE_BENCHMARK ||
+    metrics.averageSaveRate >= LOW_SAVE_RATE_BENCHMARK ||
+    metrics.averageWatchTime >= 10
+  );
 }
 
 function buildWhyWeak(weakRow, metricDiagnosis) {
